@@ -1,106 +1,87 @@
-/**
- *  @filename   :   epd4in2-demo.ino
- *  @brief      :   4.2inch e-paper display demo
- *  @author     :   Yehui from Waveshare
- *
- *  Copyright (C) Waveshare     August 4 2017
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documnetation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to  whom the Software is
- * furished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS OR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- */
+#include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
+#include "wifi_login.h"
 
-#include <SPI.h>
-#include "epd4in2.h"
-#include "imagedata.h"
-#include "epdpaint.h"
-
-#define COLORED     0
-#define UNCOLORED   1
+WiFiClientSecure client;
 
 void setup() {
-  // put your setup code here, to run once:
+  //Initialize serial and wait for port to open:
   Serial.begin(9600);
-  Epd epd;
+  delay(100);
 
-  Serial.print("Test e-Paper");
+  Serial.print("Attempting to connect to SSID: ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
 
-  if (epd.Init() != 0) {
-    Serial.print("e-Paper init failed");
+  // attempt to connect to Wifi network:
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    // wait 1 second for re-trying
+    delay(1000);
+  }
+
+  Serial.print("Connected to ");
+  Serial.println(ssid);
+
+  Serial.println("\nStarting connection to server...");
+  if (!client.connect(server, 443)) {
+    Serial.println("Connection failed!");
     return;
   }
   
-  Serial.print("e-Paper init ok");
+  Serial.println("Connected to server!");
+  // Make a HTTP request:
+  client.println(headers);
+  client.println();
 
-  /* This clears the SRAM of the e-paper display */
-  epd.ClearFrame();
-
-  /**
-    * Due to RAM not enough in Arduino UNO, a frame buffer is not allowed.
-    * In this case, a smaller image buffer is allocated and you have to 
-    * update a partial display several times.
-    * 1 byte = 8 pixels, therefore you have to set 8*N pixels at a time.
-    */
-  unsigned char image[1500];
-  Paint paint(image, 400, 28);    //width should be the multiple of 8 
-
-  paint.Clear(UNCOLORED);
-  paint.DrawStringAt(0, 0, "e-Paper Demo", &Font24, COLORED);
-  epd.SetPartialWindow(paint.GetImage(), 100, 40, paint.GetWidth(), paint.GetHeight());
-
-  paint.Clear(COLORED);
-  paint.DrawStringAt(100, 2, "Hello world", &Font24, UNCOLORED);
-  epd.SetPartialWindow(paint.GetImage(), 0, 64, paint.GetWidth(), paint.GetHeight());
+  while (client.connected()) {
+    String line = client.readStringUntil('\n');
+    if (line == "\r") {
+      Serial.println("headers received");
+      break;
+    }
+  }
   
-  paint.SetWidth(64);
-  paint.SetHeight(64);
+  DynamicJsonDocument doc(12000);
 
-  paint.Clear(UNCOLORED);
-  paint.DrawRectangle(0, 0, 40, 50, COLORED);
-  paint.DrawLine(0, 0, 40, 50, COLORED);
-  paint.DrawLine(40, 0, 0, 50, COLORED);
-  epd.SetPartialWindow(paint.GetImage(), 72, 120, paint.GetWidth(), paint.GetHeight());
+  // Deserialize the JSON document    
+  DeserializationError error = deserializeJson(doc, client);
+
+  if (error) {
+    Serial.print(F("deserializeJson() failed: "));
+    Serial.println(error.c_str());
+    return;
+  }
+
+  JsonArray forecast = doc["forecast"]["forecast"];
+  int start = doc["graph"]["start"];
+  JsonArray temperatureMin1h = doc["graph"]["temperatureMin1h"];
+  JsonArray temperatureMax1h = doc["graph"]["temperatureMax1h"];
+  JsonArray temperatureMean1h = doc["graph"]["temperatureMean1h"];
+  JsonArray precipitationMean1h = doc["graph"]["precipitationMean1h"];
   
-  paint.Clear(UNCOLORED);
-  paint.DrawCircle(32, 32, 30, COLORED);
-  epd.SetPartialWindow(paint.GetImage(), 200, 120, paint.GetWidth(), paint.GetHeight());
+  for(JsonObject f : forecast) {
+    const char *date = f["dayDate"].as<char *>();
+    int icon = f["iconDay"].as<int>();
+    int temperatureMax = f["temperatureMax"].as<int>();
+    int temperatureMin = f["temperatureMin"].as<int>();
+    int precipitation = f["precipitation"].as<int>();
 
-  paint.Clear(UNCOLORED);
-  paint.DrawFilledRectangle(0, 0, 40, 50, COLORED);
-  epd.SetPartialWindow(paint.GetImage(), 72, 200, paint.GetWidth(), paint.GetHeight());
+    Serial.print(date);
+    Serial.print(" ");
+    Serial.print(icon);
+    Serial.print(" ");
+    Serial.print(temperatureMax);
+    Serial.print(" ");
+    Serial.print(temperatureMin);
+    Serial.print(" ");
+    Serial.print(precipitation);
+    Serial.println("");
+  }
 
-  paint.Clear(UNCOLORED);
-  paint.DrawFilledCircle(32, 32, 30, COLORED);
-  epd.SetPartialWindow(paint.GetImage(), 200, 200, paint.GetWidth(), paint.GetHeight());
-
-  /* This displays the data from the SRAM in e-Paper module */
-  epd.DisplayFrame();
-
-  /* This displays an image */
-  epd.DisplayFrame(IMAGE_BUTTERFLY);
-
-  /* Deep sleep */
-  epd.Sleep();
-
-  Serial.print("Done");
+  client.stop();
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
 
 }
-
