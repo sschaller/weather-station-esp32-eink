@@ -316,6 +316,58 @@ void Paint::DrawFilledCircle(int x, int y, int radius, int colored) {
     } while(x_pos <= 0);
 }
 
+void Paint::DrawBuffer(const unsigned char *ptr, const int *size, int x, int y, int colored) {
+    const int width = size[0];
+    const int height = size[1];
+    
+    int i, j, p;
+    for (j = 0; j < height; j++) {
+        for (i = 0; i < width; i++) {
+            p = j * width + i;
+            if ((ptr[p / 8] & (0x80 >> (p % 8))) == 0) {
+                DrawPixel(x + i, y + j, colored);
+            }
+        }
+    }
+}
+
+void Paint::DrawBufferOpaque(const unsigned char *ptr, const int *size, int x, int y, int colored) {
+    const int width = size[0];
+    const int height = size[1];
+    
+    int i, j, p;
+    for (j = 0; j < height; j++) {
+        for (i = 0; i < width; i++) {
+            p = j * width + i;
+            if ((ptr[p / 8] & (0x80 >> (p % 8))) == 0) {
+                DrawPixel(x + i, y + j, colored);
+            } else {
+                DrawPixel(x + i, y + j, 1 - colored);
+            }
+        }
+    }
+}
+
+void Paint::DrawBufferAlpha(const unsigned char *ptr, const unsigned char *alpha, const int *size, int x, int y, int colored) {
+    const int width = size[0];
+    const int height = size[1];
+    
+    int i, j, p;
+    for (j = 0; j < height; j++) {
+        for (i = 0; i < width; i++) {
+            p = j * width + i;
+            if ((alpha[p / 8] & (0x80 >> (p % 8))) == 0) {
+                continue;
+            }
+            if ((ptr[p / 8] & (0x80 >> (p % 8))) == 0) {
+                DrawPixel(x + i, y + j, colored);
+            } else {
+                DrawPixel(x + i, y + j, 1 - colored);
+            }
+        }
+    }
+}
+
 /* END OF FILE */
 
 
