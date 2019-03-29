@@ -25,8 +25,8 @@
  * THE SOFTWARE.
  */
 
+#include <SPI.h>
 #include "epdif.h"
-#include <spi.h>
 
 EpdIf::EpdIf() {
 };

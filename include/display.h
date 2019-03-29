@@ -1,7 +1,6 @@
 #ifndef Display_h
 #define Display_h
 
-#include <SPI.h>
 #include "epd4in2.h"
 #include "epdpaint.h"
 

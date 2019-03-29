@@ -24,7 +24,6 @@
  * THE SOFTWARE.
  */
 
-#include <SPI.h>
 #include "epd4in2.h"
 #include "imagedata.h"
 #include "epdpaint.h"
@@ -37,17 +36,9 @@ void setup() {
   Serial.begin(9600);
   Epd epd;
 
-  Serial.print("Test e-Paper");
-
-  if (epd.Init() != 0) {
-    Serial.print("e-Paper init failed");
-    return;
-  }
   
-  Serial.print("e-Paper init ok");
 
-  /* This clears the SRAM of the e-paper display */
-  epd.ClearFrame();
+  
 
   /**
     * Due to RAM not enough in Arduino UNO, a frame buffer is not allowed.

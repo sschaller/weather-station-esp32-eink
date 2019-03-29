@@ -1,5 +1,6 @@
 #include "display.h"
 #include "data.h"
+#include "spline.h"
 
 #define COLORED     0
 #define UNCOLORED   1
