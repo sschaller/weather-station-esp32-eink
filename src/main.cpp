@@ -66,7 +66,31 @@ void requestWeather(Display *display) {
     forecasts_size++;
   }
 
+  float temperatureMean[24];
+  float temperatureMax[24];
+  float temperatureMin[24];
+  for (int i = 0; i < 24; i++) {
+    if (temperatureMean1h.size() > i) {
+      temperatureMean[i] = temperatureMean1h[i].as<float>();
+    } else {
+      temperatureMean[i] = 0.f;
+    }
+    if (temperatureMax1h.size() > i) {
+      temperatureMax[i] = temperatureMax1h[i].as<float>();
+    } else {
+      temperatureMax[i] = 0.f;
+    }
+    if (temperatureMin1h.size() > i) {
+      temperatureMin[i] = temperatureMin1h[i].as<float>();
+    } else {
+      temperatureMin[i] = 0.f;
+    }
+  }
+
   display->renderWeatherForecast(forecasts, forecast.size());
+
+  display->renderTemperatureCurves(temperatureMean, temperatureMin, temperatureMax);
+
   delete[] forecasts;
 }
 

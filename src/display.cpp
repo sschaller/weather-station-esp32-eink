@@ -158,6 +158,50 @@ void Display::renderIcon(Paint paint, int icon_type, int x, int y)
     }
 }
 
+void Display::renderTemperatureCurve(Paint paint, float *hours, float *temperatureMean, float y_min, float y_max) {
+    float range = fabs(y_max - y_min);
+
+    float y2[24];
+    spline(hours, temperatureMean, 24, y2);
+
+    float y;
+    int y_n;
+    for (int i = 0; i < 400; i++) {
+        splint(hours, temperatureMean, y2, 24, 24.f * i / 400, &y);
+
+        y_n = floorf(56.f * (y - y_min) / range);
+        paint.DrawPixel(i, 1 + y_n, COLORED);
+        paint.DrawPixel(i, 2 + y_n, COLORED);
+    }
+}
+
+void Display::renderTemperatureCurves(float *temperatureMean, float *temperatureMin, float *temperatureMax) {
+    unsigned char buffer[3000];
+    Paint paint(buffer, 400, 60); //width should be the multiple of 8
+    paint.Clear(UNCOLORED);
+
+    float hours[24];
+    float y_min = 100.f;
+    float y_max = -100.f;
+
+    for (int i = 0; i < 24; i++) {
+        hours[i] = static_cast<float>(i);
+        
+        if(temperatureMin[i] < y_min) y_min = temperatureMin[i];
+        if(temperatureMax[i] > y_max) y_max = temperatureMax[i];
+    }
+
+    Serial.print(y_min);
+    Serial.print(" ");
+    Serial.println(y_max);
+
+    renderTemperatureCurve(paint, hours, temperatureMean, y_min, y_max);
+    renderTemperatureCurve(paint, hours, temperatureMin, y_min, y_max);
+    renderTemperatureCurve(paint, hours, temperatureMax, y_min, y_max);
+
+    epd.SetPartialWindow(paint.GetImage(), 0, 120, paint.GetWidth(), paint.GetHeight());
+}
+
 void Display::renderTime()
 {
     if (!initialize(true)) {
@@ -165,7 +209,7 @@ void Display::renderTime()
     }
 
     unsigned char icon_buffer[2500];
-    Paint paint(icon_buffer, 400, 50);    //width should be the multiple of 8
+    Paint paint(icon_buffer, 400, 50); //width should be the multiple of 8
 
     int y = 0;
     for (int i = 0; i < 35; i++) {

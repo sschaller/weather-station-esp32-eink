@@ -16,7 +16,8 @@ class Display {
         void renderWeatherForecast(WeatherForecast *forecast, int num_forecasts);
         void renderIcon(Paint paint, int icon_type, int x, int y);
 
-
+        void renderTemperatureCurve(Paint paint, float *hours, float *temperatureMean, float y_min, float y_max);
+        void renderTemperatureCurves(float *temperatureMean, float *temperatureMin, float *temperatureMax);
         void renderTime();
         void draw();
 
