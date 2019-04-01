@@ -2,6 +2,7 @@
 #include "data.h"
 #include "spline.h"
 
+#define LABEL_OFFSET 40
 #define COLORED     0
 #define UNCOLORED   1
 
@@ -164,20 +165,22 @@ void Display::renderTemperatureCurve(Paint paint, float *hours, float *temperatu
     float y2[24];
     spline(hours, temperatureMean, 24, y2);
 
+    int limit_x = paint.GetWidth() - LABEL_OFFSET;
+
     float y;
     int y_n;
-    for (int i = 0; i < 400; i++) {
-        splint(hours, temperatureMean, y2, 24, 24.f * i / 400, &y);
+    for (int i = 0; i < limit_x; i++) {
+        splint(hours, temperatureMean, y2, 24, 24.f * i / limit_x, &y);
 
-        y_n = floorf(56.f * (y - y_min) / range);
-        paint.DrawPixel(i, 1 + y_n, COLORED);
-        paint.DrawPixel(i, 2 + y_n, COLORED);
+        y_n = floorf(56.f * (1.f - (y - y_min) / range));
+        paint.DrawPixel(LABEL_OFFSET + i, 7 + y_n, COLORED);
+        paint.DrawPixel(LABEL_OFFSET + i, 8 + y_n, COLORED);
     }
 }
 
 void Display::renderTemperatureCurves(float *temperatureMean, float *temperatureMin, float *temperatureMax) {
-    unsigned char buffer[3000];
-    Paint paint(buffer, 400, 60); //width should be the multiple of 8
+    unsigned char buffer[3600];
+    Paint paint(buffer, 400, 72); //width should be the multiple of 8
     paint.Clear(UNCOLORED);
 
     float hours[24];
@@ -187,19 +190,74 @@ void Display::renderTemperatureCurves(float *temperatureMean, float *temperature
     for (int i = 0; i < 24; i++) {
         hours[i] = static_cast<float>(i);
         
-        if(temperatureMin[i] < y_min) y_min = temperatureMin[i];
-        if(temperatureMax[i] > y_max) y_max = temperatureMax[i];
+        if(temperatureMean[i] < y_min) y_min = temperatureMean[i];
+        if(temperatureMean[i] > y_max) y_max = temperatureMean[i];
+
+        // if(temperatureMin[i] < y_min) y_min = temperatureMin[i];
+        // if(temperatureMax[i] > y_max) y_max = temperatureMax[i];
+    }
+
+    float step = 5.f;
+
+    float y_upper = 5 * ceilf(y_max / 5);
+    float y_lower = 5 * floorf(y_min / 5);
+
+    float range = y_upper - y_lower;
+
+    if(range > 20) {
+        step = 10.f;
+
+        y_upper = 10 * ceilf(y_max / 10);
+        y_lower = 10 * floorf(y_min / 10);
+
+        range = y_upper - y_lower;
     }
 
     Serial.print(y_min);
     Serial.print(" ");
     Serial.println(y_max);
 
-    renderTemperatureCurve(paint, hours, temperatureMean, y_min, y_max);
-    renderTemperatureCurve(paint, hours, temperatureMin, y_min, y_max);
-    renderTemperatureCurve(paint, hours, temperatureMax, y_min, y_max);
+    for (int i = 0; i * step <= range; i++) {
+
+        int y = static_cast<int>(floorf(56.f * (1.f - (i * step) / range)));
+        int y_text = static_cast<int>(i * step + y_lower);
+        String t = String(y_text);
+        int text_offset = t.length() * 11;
+        if (y_text < 0) text_offset -= 6;
+
+        paint.DrawHorizontalLine(LABEL_OFFSET, y + 6, paint.GetWidth() - LABEL_OFFSET, COLORED);
+        paint.DrawStringAt(LABEL_OFFSET - 4 - text_offset, y, t.c_str(), &Font16, COLORED);
+    }
+
+    renderTemperatureCurve(paint, hours, temperatureMean, y_lower, y_upper);
+    // renderTemperatureCurve(paint, hours, temperatureMin, y_lower, y_upper);
+    // renderTemperatureCurve(paint, hours, temperatureMax, y_lower, y_upper);
 
     epd.SetPartialWindow(paint.GetImage(), 0, 120, paint.GetWidth(), paint.GetHeight());
+}
+
+void Display::render24hIcons(int *icons)
+{
+    unsigned char icon_buffer[2400];
+    Paint paint(icon_buffer, 400, 48);
+
+    int start = 6;
+    int end = 24;
+    int step = 3;
+
+    int steps = (end - start) / step;
+    int part = (paint.GetWidth() - LABEL_OFFSET) / steps;
+
+    for (int i = 0; i <= steps; i++) {
+
+        int hour = start + i * step;
+
+        int part = (paint.GetWidth() - LABEL_OFFSET) / steps;
+
+        String text = String(hour) + String(":00");
+        int offset = (text.length() * 14) / 2;
+        paint.DrawStringAt(LABEL_OFFSET + i * part + part / 2 - offset, 0, text.c_str(), &Font20, COLORED);
+    }
 }
 
 void Display::renderTime()

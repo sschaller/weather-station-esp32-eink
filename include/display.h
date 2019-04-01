@@ -18,6 +18,7 @@ class Display {
 
         void renderTemperatureCurve(Paint paint, float *hours, float *temperatureMean, float y_min, float y_max);
         void renderTemperatureCurves(float *temperatureMean, float *temperatureMin, float *temperatureMax);
+        void render24hIcons(int *icons);
         void renderTime();
         void draw();
 

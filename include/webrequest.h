@@ -2,7 +2,6 @@
 #define WebRequest_h
 
 #include <WiFiClientSecure.h>
-#include <ArduinoJson.h>
 
 class WebRequest {
   bool connected;

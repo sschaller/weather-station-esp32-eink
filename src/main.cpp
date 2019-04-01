@@ -1,5 +1,8 @@
 #include <time.h>
 
+#define ARDUINOJSON_USE_LONG_LONG 1
+#include <ArduinoJson.h>
+
 #include "weather.h"
 #include "display.h"
 #include "webrequest.h"
@@ -28,7 +31,20 @@ void requestWeather(Display *display) {
   }
 
   JsonArray forecast = doc["forecast"];
-  int start = doc["graph"]["start"];
+  
+  unsigned long long start_s = doc["graph"]["start"].as<unsigned long long>();
+
+  Serial.println(static_cast<unsigned long>(start_s / 1000));
+
+  time_t start = static_cast<time_t>(start_s / 1000);
+
+  tm tm_start = *localtime(&start);
+
+  char buffer[80];
+  strftime(buffer, 80, "Start %H:%M:%S on %Y-%m-%d - A %A", &tm_start);
+  Serial.println(buffer);
+
+  JsonArray icons = doc["graph"]["weatherIcon3h"];
   JsonArray temperatureMin1h = doc["graph"]["temperatureMin1h"];
   JsonArray temperatureMax1h = doc["graph"]["temperatureMax1h"];
   JsonArray temperatureMean1h = doc["graph"]["temperatureMean1h"];
@@ -90,6 +106,8 @@ void requestWeather(Display *display) {
   display->renderWeatherForecast(forecasts, forecast.size());
 
   display->renderTemperatureCurves(temperatureMean, temperatureMin, temperatureMax);
+
+  // display->render24hIcons()
 
   delete[] forecasts;
 }
