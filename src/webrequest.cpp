@@ -1,3 +1,6 @@
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+
 #include "webrequest.h"
 #include "wifi_login.h"
 
@@ -32,6 +35,9 @@ bool WebRequest::connect() {
 }
 
 bool WebRequest::requestWeather() {
+  if (!connect()) {
+    return false;
+  }
 
   Serial.println("\nStarting connection to server...");
   if (!client.connect(server, 443)) {
@@ -54,6 +60,21 @@ bool WebRequest::requestWeather() {
   }
   
   return true;
+}
+
+bool WebRequest::updateTime() {
+  if (!connect()) {
+    return false;
+  }
+  
+  WiFiUDP ntpUDP;
+  NTPClient timeClient(ntpUDP);
+
+  timeClient.begin();
+  bool success = timeClient.forceUpdate();
+  timeClient.end();
+  
+  return success;
 }
 
 void WebRequest::disconnect() {

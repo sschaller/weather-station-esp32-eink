@@ -126,8 +126,11 @@ void setup() {
   delay(100);
   Serial.println("");
 
+  // WebRequest web = WebRequest();
+  // bool success = web.updateTime();
+
   Display *display = new Display();
-  
+
   if (first_time) {
     requestWeather(display);
     first_time = false;

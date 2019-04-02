@@ -9,12 +9,14 @@ class WebRequest {
   public:
     WiFiClientSecure client;
     
+    WebRequest(){};
     ~WebRequest();
 
     bool connect();
     void disconnect();
 
     bool requestWeather();
+    bool updateTime();
 };
 
 #endif /* WebRequest_h */
