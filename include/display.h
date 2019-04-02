@@ -10,6 +10,12 @@ class Display {
     bool initialized;
     Epd epd;
 
+    const int width = 400; //width should be the multiple of 8
+    const int height = 300;
+
+    unsigned char *buffer;
+    Paint *paint;
+
     public:
         ~Display();
         bool initialize(bool clear_buffer);
@@ -17,7 +23,7 @@ class Display {
         void renderIcon(Paint paint, int icon_type, int x, int y);
 
         void renderTemperatureCurve(Paint paint, float *hours, float *temperatureMean, float y_min, float y_max);
-        void renderTemperatureCurves(float *temperatureMean, float *temperatureMin, float *temperatureMax);
+        void renderTemperatureCurves(float *temperatureMean);
         void render24hIcons(int *icons);
         void renderTime();
         void draw();

@@ -50,6 +50,17 @@ void Paint::Clear(int colored) {
 }
 
 /**
+ *  @brief: clear area of image
+ */
+void Paint::ClearArea(int x, int y, int width, int height, int colored) {
+    for (int s = x; s < x + width && s < this->width; s++) {
+        for (int t = y; t < y + height && t < this->height; t++) {
+            DrawAbsolutePixel(x, y, colored);
+        }
+    }
+}
+
+/**
  *  @brief: this draws a pixel by absolute coordinates.
  *          this function won't be affected by the rotate parameter.
  */

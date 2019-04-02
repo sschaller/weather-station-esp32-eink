@@ -43,6 +43,7 @@ public:
     Paint(unsigned char* image, int width, int height);
     ~Paint();
     void Clear(int colored);
+    void ClearArea(int x, int y, int width, int height, int colored);
     int  GetWidth(void);
     void SetWidth(int width);
     int  GetHeight(void);

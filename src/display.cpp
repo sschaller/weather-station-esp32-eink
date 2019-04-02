@@ -32,6 +32,10 @@ bool Display::initialize(bool clear_buffer) {
     /* This clears the SRAM of the e-paper display */
     if (clear_buffer) epd.ClearFrame();
 
+    // create buffer
+    buffer = new unsigned char[width * height / 8];
+    paint = new Paint(buffer, width, height);
+
     initialized = true;
 
     return true;
@@ -43,10 +47,7 @@ void Display::renderWeatherForecast(WeatherForecast *forecasts, int num_forecast
         return;
     }
 
-    unsigned char image[5200];
-    Paint paint(image, 400, 104);    //width should be the multiple of 8
-
-    paint.Clear(UNCOLORED);
+    paint->ClearArea(0, 200, 400, 104, UNCOLORED);
 
     int i;
     for (i = 0; i < num_forecasts && i < 5; i++) {
@@ -68,7 +69,7 @@ void Display::renderWeatherForecast(WeatherForecast *forecasts, int num_forecast
     epd.SetPartialWindow(paint.GetImage(), 0, 200, paint.GetWidth(), paint.GetHeight());
 }
 
-void Display::renderIcon(Paint paint, int icon_type, int x, int y)
+void Display::renderIcon(int icon_type, int x, int y)
 {
     // Drawing area will be overwritten in places of icons (no need to clear)
 
@@ -83,79 +84,79 @@ void Display::renderIcon(Paint paint, int icon_type, int x, int y)
 
     if (is_dark_cloud) {
         // draw background pattern for cloud first    
-        paint.DrawBuffer(CLOUD_DARK, CLOUD_DARK_SIZE, x + offset_cloud_x, y + 11, COLORED);
+        paint->DrawBuffer(CLOUD_DARK, CLOUD_DARK_SIZE, x + offset_cloud_x, y + 11, COLORED);
     }
 
     // Draw template according to type
     if (is_sunny) {
-        paint.DrawBuffer(SUNNY, SUNNY_SIZE, x + 8, y + 8, COLORED);
+        paint->DrawBuffer(SUNNY, SUNNY_SIZE, x + 8, y + 8, COLORED);
     } else if (is_mostly_sunny) {
-        paint.DrawBuffer(MOSTLY_SUNNY, MOSTLY_SUNNY_SIZE, x + 4, y + 2, COLORED);
+        paint->DrawBuffer(MOSTLY_SUNNY, MOSTLY_SUNNY_SIZE, x + 4, y + 2, COLORED);
     } else if (is_mostly_cloudy) {
-        paint.DrawBuffer(MOSTLY_CLOUDY, MOSTLY_CLOUDY_SIZE, x, y, COLORED);
+        paint->DrawBuffer(MOSTLY_CLOUDY, MOSTLY_CLOUDY_SIZE, x, y, COLORED);
     } else if (is_cloudy) {
-        paint.DrawBuffer(CLOUDY, CLOUDY_SIZE, x + 5, y + 11, COLORED);
+        paint->DrawBuffer(CLOUDY, CLOUDY_SIZE, x + 5, y + 11, COLORED);
     }
 
     // custom types
     if (icon_type == 26) {
         // draw high fog, no transparency
-        paint.DrawBufferOpaque(FOG_TOP, FOG_TOP_SIZE, x + 5, y + 7, COLORED);
+        paint->DrawBufferOpaque(FOG_TOP, FOG_TOP_SIZE, x + 5, y + 7, COLORED);
     } else if (icon_type == 27) {
         // draw low fog, no transparency
-        paint.DrawBufferOpaque(FOG_BOTTOM, FOG_BOTTOM_SIZE, x + 5, y + 26, COLORED);
+        paint->DrawBufferOpaque(FOG_BOTTOM, FOG_BOTTOM_SIZE, x + 5, y + 26, COLORED);
     } else if (icon_type == 28) {
         // fog - draw both
-        paint.DrawBuffer(FOG_TOP, FOG_TOP_SIZE, x + 5, y + 12, COLORED);
-        paint.DrawBuffer(FOG_BOTTOM, FOG_BOTTOM_SIZE, x + 5, y + 26, COLORED);
+        paint->DrawBuffer(FOG_TOP, FOG_TOP_SIZE, x + 5, y + 12, COLORED);
+        paint->DrawBuffer(FOG_BOTTOM, FOG_BOTTOM_SIZE, x + 5, y + 26, COLORED);
     } else if (icon_type == 12) {
         // 1 bolt
-        paint.DrawBufferAlpha(BOLT_1, BOLT_1_ALPHA, BOLT_1_SIZE, x + offset_cloud_x + 15, y + 28, COLORED);
+        paint->DrawBufferAlpha(BOLT_1, BOLT_1_ALPHA, BOLT_1_SIZE, x + offset_cloud_x + 15, y + 28, COLORED);
     } else if (icon_type == 13 || icon_type == 23) {
         // 1 bolt, 2 rain
-        paint.DrawBufferAlpha(BOLT_1_RAIN_2, BOLT_1_RAIN_2_ALPHA, BOLT_1_RAIN_2_SIZE, x + offset_cloud_x + 9, y + 28, COLORED);
+        paint->DrawBufferAlpha(BOLT_1_RAIN_2, BOLT_1_RAIN_2_ALPHA, BOLT_1_RAIN_2_SIZE, x + offset_cloud_x + 9, y + 28, COLORED);
     } else if (icon_type == 24) {
         // 2 bolts, 2 rain
-        paint.DrawBufferAlpha(BOLT_2_RAIN_2, BOLT_2_RAIN_2_ALPHA, BOLT_2_RAIN_2_SIZE, x + offset_cloud_x + 9, y + 28, COLORED);
+        paint->DrawBufferAlpha(BOLT_2_RAIN_2, BOLT_2_RAIN_2_ALPHA, BOLT_2_RAIN_2_SIZE, x + offset_cloud_x + 9, y + 28, COLORED);
     } else if (icon_type == 25) {
         // 2 bolts, 4 rain
-        paint.DrawBufferAlpha(BOLT_2_RAIN_4, BOLT_2_RAIN_4_ALPHA, BOLT_2_RAIN_4_SIZE, x + offset_cloud_x + 3, y + 28, COLORED);
+        paint->DrawBufferAlpha(BOLT_2_RAIN_4, BOLT_2_RAIN_4_ALPHA, BOLT_2_RAIN_4_SIZE, x + offset_cloud_x + 3, y + 28, COLORED);
     } else if (icon_type == 6 || icon_type == 29) {
         // 1 rain
-        paint.DrawBufferAlpha(RAIN_1, RAIN_1_ALPHA, RAIN_1_SIZE, x + offset_cloud_x + 15, y + 32, COLORED);
+        paint->DrawBufferAlpha(RAIN_1, RAIN_1_ALPHA, RAIN_1_SIZE, x + offset_cloud_x + 15, y + 32, COLORED);
     } else if (icon_type == 9 || icon_type == 14 || icon_type == 32) {
         // 2 rain
-        paint.DrawBufferAlpha(RAIN_2, RAIN_2_ALPHA, RAIN_2_SIZE, x + offset_cloud_x + 12, y + 32, COLORED);
+        paint->DrawBufferAlpha(RAIN_2, RAIN_2_ALPHA, RAIN_2_SIZE, x + offset_cloud_x + 12, y + 32, COLORED);
     } else if (icon_type == 17 || icon_type == 33) {
         // 3 rain
-        paint.DrawBufferAlpha(RAIN_3, RAIN_3_ALPHA, RAIN_3_SIZE, x + offset_cloud_x + 11, y + 31, COLORED);
+        paint->DrawBufferAlpha(RAIN_3, RAIN_3_ALPHA, RAIN_3_SIZE, x + offset_cloud_x + 11, y + 31, COLORED);
     } else if (icon_type == 20) {
         // 4 rain
-        paint.DrawBufferAlpha(RAIN_4, RAIN_4_ALPHA, RAIN_4_SIZE, x + offset_cloud_x + 7, y + 30, COLORED);
+        paint->DrawBufferAlpha(RAIN_4, RAIN_4_ALPHA, RAIN_4_SIZE, x + offset_cloud_x + 7, y + 30, COLORED);
     } else if (icon_type == 8 || icon_type == 30) {
         // 1 snow
-        paint.DrawBufferAlpha(SNOW_1, SNOW_1_ALPHA, SNOW_1_SIZE, x + offset_cloud_x + 14, y + 33, COLORED);
+        paint->DrawBufferAlpha(SNOW_1, SNOW_1_ALPHA, SNOW_1_SIZE, x + offset_cloud_x + 14, y + 33, COLORED);
     } else if (icon_type == 11 || icon_type == 16) {
         // 2 snow
-        paint.DrawBufferAlpha(SNOW_2, SNOW_2_ALPHA, SNOW_2_SIZE, x + offset_cloud_x + 11, y + 32, COLORED);
+        paint->DrawBufferAlpha(SNOW_2, SNOW_2_ALPHA, SNOW_2_SIZE, x + offset_cloud_x + 11, y + 32, COLORED);
     } else if (icon_type == 19 || icon_type == 34) {
         // 3 snow
-        paint.DrawBufferAlpha(SNOW_3, SNOW_3_ALPHA, SNOW_3_SIZE, x + offset_cloud_x + 11, y + 31, COLORED);
+        paint->DrawBufferAlpha(SNOW_3, SNOW_3_ALPHA, SNOW_3_SIZE, x + offset_cloud_x + 11, y + 31, COLORED);
     } else if (icon_type == 22) {
         // 4 snow
-        paint.DrawBufferAlpha(SNOW_4, SNOW_4_ALPHA, SNOW_4_SIZE, x + offset_cloud_x + 4, y + 33, COLORED);
+        paint->DrawBufferAlpha(SNOW_4, SNOW_4_ALPHA, SNOW_4_SIZE, x + offset_cloud_x + 4, y + 33, COLORED);
     } else if (icon_type == 7 || icon_type == 15 || icon_type == 31) {
         // 1 rain 1 snow
-        paint.DrawBufferAlpha(RAIN_1_SNOW_1, RAIN_1_SNOW_1_ALPHA, RAIN_1_SNOW_1_SIZE, x + offset_cloud_x + 12, y + 31, COLORED);
+        paint->DrawBufferAlpha(RAIN_1_SNOW_1, RAIN_1_SNOW_1_ALPHA, RAIN_1_SNOW_1_SIZE, x + offset_cloud_x + 12, y + 31, COLORED);
     } else if (icon_type == 10) {
         // 2 rain 1 snow
-        paint.DrawBufferAlpha(RAIN_2_SNOW_1, RAIN_2_SNOW_1_ALPHA, RAIN_2_SNOW_1_SIZE, x + offset_cloud_x + 6, y + 31, COLORED);
+        paint->DrawBufferAlpha(RAIN_2_SNOW_1, RAIN_2_SNOW_1_ALPHA, RAIN_2_SNOW_1_SIZE, x + offset_cloud_x + 6, y + 31, COLORED);
     } else if (icon_type == 18) {
         // 2 rain 2 snow
-        paint.DrawBufferAlpha(RAIN_2_SNOW_2, RAIN_2_SNOW_2_ALPHA, RAIN_2_SNOW_2_SIZE, x + offset_cloud_x + 7, y + 30, COLORED);
+        paint->DrawBufferAlpha(RAIN_2_SNOW_2, RAIN_2_SNOW_2_ALPHA, RAIN_2_SNOW_2_SIZE, x + offset_cloud_x + 7, y + 30, COLORED);
     } else if (icon_type == 21) {
         // 3 rain 3 snow
-        paint.DrawBufferAlpha(RAIN_3_SNOW_3, RAIN_3_SNOW_3_ALPHA, RAIN_3_SNOW_3_SIZE, x + offset_cloud_x + 6, y + 31, COLORED);
+        paint->DrawBufferAlpha(RAIN_3_SNOW_3, RAIN_3_SNOW_3_ALPHA, RAIN_3_SNOW_3_SIZE, x + offset_cloud_x + 6, y + 31, COLORED);
     }
 }
 
@@ -165,7 +166,7 @@ void Display::renderTemperatureCurve(Paint paint, float *hours, float *temperatu
     float y2[24];
     spline(hours, temperatureMean, 24, y2);
 
-    int limit_x = paint.GetWidth() - LABEL_OFFSET;
+    int limit_x = width - LABEL_OFFSET;
 
     float y;
     int y_n;
@@ -178,10 +179,8 @@ void Display::renderTemperatureCurve(Paint paint, float *hours, float *temperatu
     }
 }
 
-void Display::renderTemperatureCurves(float *temperatureMean, float *temperatureMin, float *temperatureMax) {
-    unsigned char buffer[3600];
-    Paint paint(buffer, 400, 72); //width should be the multiple of 8
-    paint.Clear(UNCOLORED);
+void Display::renderTemperatureCurves(float *temperatureMean) {
+    paint->ClearArea(0, 400, 120, 72, UNCOLORED);
 
     float hours[24];
     float y_min = 100.f;
@@ -192,9 +191,6 @@ void Display::renderTemperatureCurves(float *temperatureMean, float *temperature
         
         if(temperatureMean[i] < y_min) y_min = temperatureMean[i];
         if(temperatureMean[i] > y_max) y_max = temperatureMean[i];
-
-        // if(temperatureMin[i] < y_min) y_min = temperatureMin[i];
-        // if(temperatureMax[i] > y_max) y_max = temperatureMax[i];
     }
 
     float step = 5.f;
@@ -225,69 +221,34 @@ void Display::renderTemperatureCurves(float *temperatureMean, float *temperature
         int text_offset = t.length() * 11;
         if (y_text < 0) text_offset -= 6;
 
-        paint.DrawHorizontalLine(LABEL_OFFSET, y + 6, paint.GetWidth() - LABEL_OFFSET, COLORED);
-        paint.DrawStringAt(LABEL_OFFSET - 4 - text_offset, y, t.c_str(), &Font16, COLORED);
+        paint->DrawHorizontalLine(LABEL_OFFSET, 120 + y + 6, width - LABEL_OFFSET, COLORED);
+        paint->DrawStringAt(LABEL_OFFSET - 4 - text_offset, 120 + y, t.c_str(), &Font16, COLORED);
     }
 
-    renderTemperatureCurve(paint, hours, temperatureMean, y_lower, y_upper);
-    // renderTemperatureCurve(paint, hours, temperatureMin, y_lower, y_upper);
-    // renderTemperatureCurve(paint, hours, temperatureMax, y_lower, y_upper);
-
-    epd.SetPartialWindow(paint.GetImage(), 0, 120, paint.GetWidth(), paint.GetHeight());
+    renderTemperatureCurve(hours, temperatureMean, y_lower, y_upper);
 }
 
 void Display::render24hIcons(int *icons)
 {
-    unsigned char icon_buffer[2400];
-    Paint paint(icon_buffer, 400, 48);
+    paint->ClearArea(0, 400, 70, 48);
 
     int start = 6;
     int end = 24;
     int step = 3;
 
     int steps = (end - start) / step;
-    int part = (paint.GetWidth() - LABEL_OFFSET) / steps;
+    int part = (width - LABEL_OFFSET) / steps;
 
     for (int i = 0; i <= steps; i++) {
 
         int hour = start + i * step;
 
-        int part = (paint.GetWidth() - LABEL_OFFSET) / steps;
+        int part = (width - LABEL_OFFSET) / steps;
 
         String text = String(hour) + String(":00");
         int offset = (text.length() * 14) / 2;
-        paint.DrawStringAt(LABEL_OFFSET + i * part + part / 2 - offset, 0, text.c_str(), &Font20, COLORED);
+        paint->DrawStringAt(LABEL_OFFSET + i * part + part / 2 - offset, 70, text.c_str(), &Font20, COLORED);
     }
-}
-
-void Display::renderTime()
-{
-    if (!initialize(true)) {
-        return;
-    }
-
-    unsigned char icon_buffer[2500];
-    Paint paint(icon_buffer, 400, 50); //width should be the multiple of 8
-
-    int y = 0;
-    for (int i = 0; i < 35; i++) {
-        
-        if (i % 8 == 0) {
-            // if new row or last icon
-            paint.Clear(UNCOLORED);
-        }
-        
-        int x = i % 8;
-        renderIcon(paint, i + 1, 50 * x, 0);
-
-        if (i % 8 == 7 || i == 34) {
-            epd.SetPartialWindow(paint.GetImage(), 0, y * 50, paint.GetWidth(), paint.GetHeight());
-            y++;
-        }
-    }
-    
-
-    
 }
 
 void Display::draw()
@@ -298,7 +259,7 @@ void Display::draw()
         return;
     }
     /* This displays the data from the SRAM in e-Paper module */
-    epd.DisplayFrame();
+    epd.DisplayFrame(buffer);
 
     /* Deep sleep */
     epd.Sleep();
@@ -314,4 +275,7 @@ Display::~Display() {
         Serial.println("Warning: Destroying display, was still initialized");
         draw();
     }
+
+    delete[] buffer;
+    delete paint;
 }
