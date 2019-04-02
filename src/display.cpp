@@ -2,7 +2,7 @@
 #include "data.h"
 #include "spline.h"
 
-#define LABEL_OFFSET 40
+#define LABEL_OFFSET 35
 #define COLORED     0
 #define UNCOLORED   1
 
@@ -35,6 +35,7 @@ bool Display::initialize(bool clear_buffer) {
     // create buffer
     buffer = new unsigned char[width * height / 8];
     paint = new Paint(buffer, width, height);
+    paint->Clear(UNCOLORED);
 
     initialized = true;
 
@@ -47,26 +48,22 @@ void Display::renderWeatherForecast(WeatherForecast *forecasts, int num_forecast
         return;
     }
 
-    paint->ClearArea(0, 200, 400, 104, UNCOLORED);
-
     int i;
     for (i = 0; i < num_forecasts && i < 5; i++) {
         int x = 80 * i;
         WeatherForecast f = forecasts[i];
-        renderIcon(paint, f.icon, x + 15, 0);
+        renderIcon(f.icon, x + 15, 200);
 
         String temp = String(String(f.tempMin, DEC) + "|" + String(f.tempMax, DEC));
         int len = temp.length() * 11;
         if(f.tempMin < 0) len -= 5;
         int start = (80 - len) / 2;
 
-        paint.DrawStringAt(x + start, 52, temp.c_str(), &Font16, COLORED);
+        paint->DrawStringAt(x + start, 252, temp.c_str(), &Font16, COLORED);
 
         
-        paint.DrawStringAt(x + 15, 76, dayShortStr(f.weekDay), &Font24, COLORED);
+        paint->DrawStringAt(x + 15, 276, dayShortStr(f.weekDay), &Font24, COLORED);
     }
-
-    epd.SetPartialWindow(paint.GetImage(), 0, 200, paint.GetWidth(), paint.GetHeight());
 }
 
 void Display::renderIcon(int icon_type, int x, int y)
@@ -160,13 +157,13 @@ void Display::renderIcon(int icon_type, int x, int y)
     }
 }
 
-void Display::renderTemperatureCurve(Paint paint, float *hours, float *temperatureMean, float y_min, float y_max) {
+void Display::renderTemperatureCurve(float *hours, float *temperatureMean, float y_min, float y_max) {
     float range = fabs(y_max - y_min);
 
     float y2[24];
     spline(hours, temperatureMean, 24, y2);
 
-    int limit_x = width - LABEL_OFFSET;
+    int limit_x = width - LABEL_OFFSET - 15;
 
     float y;
     int y_n;
@@ -174,14 +171,12 @@ void Display::renderTemperatureCurve(Paint paint, float *hours, float *temperatu
         splint(hours, temperatureMean, y2, 24, 24.f * i / limit_x, &y);
 
         y_n = floorf(56.f * (1.f - (y - y_min) / range));
-        paint.DrawPixel(LABEL_OFFSET + i, 7 + y_n, COLORED);
-        paint.DrawPixel(LABEL_OFFSET + i, 8 + y_n, COLORED);
+        paint->DrawPixel(LABEL_OFFSET + i, 127 + y_n, COLORED);
+        paint->DrawPixel(LABEL_OFFSET + i, 128 + y_n, COLORED);
     }
 }
 
 void Display::renderTemperatureCurves(float *temperatureMean) {
-    paint->ClearArea(0, 400, 120, 72, UNCOLORED);
-
     float hours[24];
     float y_min = 100.f;
     float y_max = -100.f;
@@ -219,9 +214,8 @@ void Display::renderTemperatureCurves(float *temperatureMean) {
         int y_text = static_cast<int>(i * step + y_lower);
         String t = String(y_text);
         int text_offset = t.length() * 11;
-        if (y_text < 0) text_offset -= 6;
 
-        paint->DrawHorizontalLine(LABEL_OFFSET, 120 + y + 6, width - LABEL_OFFSET, COLORED);
+        paint->DrawHorizontalLine(LABEL_OFFSET, 120 + y + 6, width - LABEL_OFFSET - 25, COLORED);
         paint->DrawStringAt(LABEL_OFFSET - 4 - text_offset, 120 + y, t.c_str(), &Font16, COLORED);
     }
 
@@ -230,24 +224,22 @@ void Display::renderTemperatureCurves(float *temperatureMean) {
 
 void Display::render24hIcons(int *icons)
 {
-    paint->ClearArea(0, 400, 70, 48);
-
     int start = 6;
     int end = 24;
     int step = 3;
 
     int steps = (end - start) / step;
-    int part = (width - LABEL_OFFSET) / steps;
+    int part = (width - LABEL_OFFSET - 25) / steps;
 
     for (int i = 0; i <= steps; i++) {
 
         int hour = start + i * step;
 
-        int part = (width - LABEL_OFFSET) / steps;
+        String text = String(hour % 12) + (hour % 24 >= 12 ? "PM" : "AM");
 
-        String text = String(hour) + String(":00");
-        int offset = (text.length() * 14) / 2;
-        paint->DrawStringAt(LABEL_OFFSET + i * part + part / 2 - offset, 70, text.c_str(), &Font20, COLORED);
+        int x = LABEL_OFFSET + i * part - text.length() * 14 / 2;
+
+        paint->DrawStringAt(x, 70, text.c_str(), &Font20, COLORED);
     }
 }
 
