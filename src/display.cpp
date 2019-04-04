@@ -45,6 +45,13 @@ bool Display::initialize(bool clear_buffer) {
     return true;
 }
 
+void Display::renderWeather(Weather weather)
+{
+    renderWeatherForecast(weather.forecasts, NUM_FORECASTS);
+    renderTemperatureCurves(weather.temperatures, weather.precipitation, NUM_1H);
+    render24hIcons(weather.icons, NUM_3H);
+}
+
 void Display::renderWeatherForecast(WeatherForecast *forecasts, int num_forecasts)
 {
     if (!initialize(true)) {
@@ -52,7 +59,7 @@ void Display::renderWeatherForecast(WeatherForecast *forecasts, int num_forecast
     }
 
     int i;
-    for (i = 0; i < num_forecasts && i < 5; i++) {
+    for (i = 0; i < num_forecasts; i++) {
         int x = 80 * i;
         WeatherForecast f = forecasts[i];
         renderIcon(f.icon, x + 15, 200);
@@ -67,7 +74,7 @@ void Display::renderWeatherForecast(WeatherForecast *forecasts, int num_forecast
     }
 }
 
-void Display::renderIcon(int icon_type, int x, int y)
+void Display::renderIcon(uint8_t icon_type, int x, int y)
 {
     // Drawing area will be overwritten in places of icons (no need to clear)
 
@@ -194,6 +201,7 @@ void Display::renderTemperatureCurves(float *temperatures, float *precipitation,
         if(temperatures[i] > y_max) y_max = temperatures[i];
     }
 
+    // Default step resolution
     float step = 5.f;
 
     float y_lower = step * floorf(y_min / step);
@@ -201,6 +209,7 @@ void Display::renderTemperatureCurves(float *temperatures, float *precipitation,
 
     int steps = (y_upper - y_lower) / step;
 
+    // Too many steps, increase step resolution (5 > 10)
     if (steps > NUM_LINES) {
         step = 10.f;
 
@@ -212,15 +221,18 @@ void Display::renderTemperatureCurves(float *temperatures, float *precipitation,
 
     float rest = NUM_LINES - steps;
 
-    int rest_upper = floorf(rest / 2);
+    if (rest > 0) {
 
-    if (y_upper - y_max <= y_min - y_lower) {
-        rest_upper = ceilf(rest / 2);
+        // where to increase space first (where less space)
+        int rest_upper = floorf(rest / 2);
+        if (y_upper - y_max <= y_min - y_lower) {
+            rest_upper = ceilf(rest / 2);
+        }
+        int rest_lower = rest - rest_upper;
+
+        y_lower -= rest_lower * step;
+        y_upper += rest_upper * step;
     }
-    int rest_lower = rest - rest_upper;
-
-    y_lower -= rest_lower * step;
-    y_upper += rest_upper * step;
 
     for (int i = 0; i <= NUM_LINES; i++) {
         int y = Y_CURVES + (NUM_LINES - i) * 80.f / NUM_LINES;
@@ -271,7 +283,7 @@ void Display::renderPrecipitation(float *precipitation, int num_points) {
     }
 }
 
-void Display::render24hIcons(int *icons, int num_steps)
+void Display::render24hIcons(uint8_t *icons, int num_steps)
 {
     int start = 6;
     int step = 3;

@@ -11,12 +11,11 @@
 #define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
 #define TIME_TO_SLEEP  10        /* Time ESP32 will go to sleep (in seconds) */
 
-#define HOUR_START 6
-#define HOUR_END 24
+#define MAX_TIME_SYNC 60
 
-RTC_DATA_ATTR bool first_time = true;
+RTC_DATA_ATTR Weather weather_save;
 
-void requestWeather(Display *display) {
+bool requestWeather(Weather *weather) {
   // WebRequest *request = new WebRequest();
   // bool success = request->requestWeather();
   // if (!success) {
@@ -31,7 +30,7 @@ void requestWeather(Display *display) {
   if (error) {
     Serial.print(F("deserializeJson() failed: "));
     Serial.println(error.c_str());
-    return;
+    return false;
   }
 
   JsonArray forecast = doc["forecast"];
@@ -51,16 +50,14 @@ void requestWeather(Display *display) {
   JsonArray icons = doc["graph"]["weatherIcon3h"];
   JsonArray temperatureMean1h = doc["graph"]["temperatureMean1h"];
   JsonArray precipitationMean1h = doc["graph"]["precipitationMean1h"];
-
-  WeatherForecast *forecasts = (WeatherForecast *) malloc(forecast.size() * sizeof(WeatherForecast));
-  int forecasts_size = 0;
   
+  int i_forecast = 0;
   for(JsonObject f : forecast) {
     const char *date = f["dayDate"].as<char *>();
-    int icon = f["iconDay"].as<int>();
-    int temperatureMax = f["temperatureMax"].as<int>();
-    int temperatureMin = f["temperatureMin"].as<int>();
-    int precipitation = f["precipitation"].as<int>();
+    uint8_t icon = static_cast<uint8_t>(f["iconDay"].as<unsigned char>());
+    float temperatureMax = f["temperatureMax"].as<float>();
+    float temperatureMin = f["temperatureMin"].as<float>();
+    float precipitation = f["precipitation"].as<float>();
 
     struct tm tm;
     strptime(date, "%Y-%m-%d", &tm);
@@ -76,52 +73,67 @@ void requestWeather(Display *display) {
     Serial.print(precipitation);
     Serial.println("");
 
-    int weekDay = tm.tm_wday + 1; // 1 = sunday
+    // Make sure to start on the correct day
+    // otherwise continue
+
+    uint8_t weekDay = static_cast<uint8_t>(tm.tm_wday) + 1; // 1 = sunday
 
     WeatherForecast forecast = {.weekDay = weekDay, .icon = icon, .tempMax = temperatureMax, .tempMin = temperatureMin, .precipitation = precipitation};
-    forecasts[forecasts_size] = forecast;
-    forecasts_size++;
+    weather->forecasts[i_forecast] = forecast;
+    i_forecast++;
+
+    if (i_forecast >= NUM_FORECASTS) break; // stop when forecasts array is full
   }
 
   int hour = tm_start.tm_hour;
-
-  const int num_icons = (HOUR_END - HOUR_START) / 3 + 1;
-  const int num_1h = HOUR_END - HOUR_START + 1;
-
-  int icons3h[num_icons];
-  float temperatureMean[num_1h];
-  float precipitation[num_1h];
   
   bool started = false;
-  int hours = 0;
+  int i_hour = 0;
   for (int i = 0; i < 48; i++) {
 
     if (!started && (hour + i) % 24 != HOUR_START) continue;
     started = true;
   
-    if (icons.size() > i && hours % 3 == 0) {
-      icons3h[(int)floorf((float)hours / 3)] = icons[(int)floorf((float)i / 3)].as<int>();
-    }
-    if (temperatureMean1h.size() > i) {
-      temperatureMean[hours] = temperatureMean1h[i].as<float>();
-    } else {
-      temperatureMean[hours] = 0.f;
-    }
-    if (precipitationMean1h.size() > i) {
-      precipitation[hours] = precipitationMean1h[i].as<float>();
-    } else {
-      precipitation[hours] = 0.f;
+    int i_3h = floorf((float)i_hour / 3);
+    
+    // Initialize all to zero 
+    weather->temperatures[i_hour] = 0.f;
+    weather->precipitation[i_hour] = 0.f;
+    if (i_hour % 3 == 0 && i_3h < NUM_3H) weather->icons[i_3h] = 0;
+
+    if (icons.size() > (float)i / 3 && i_hour % 3 == 0 && i_3h < NUM_3H) {
+      weather->icons[i_3h] = static_cast<uint8_t>(icons[(int)floorf((float)i / 3)].as<unsigned char>());
     }
 
-    hours++;
-    if ((hour + i) % 24 == HOUR_END % 24) break; // stop at 1 AM
+    if (temperatureMean1h.size() > i && i_hour < NUM_1H) {
+      weather->temperatures[i_hour] = temperatureMean1h[i].as<float>();
+    }
+
+    if (temperatureMean1h.size() > i && i_hour < NUM_1H) {
+      weather->precipitation[i_hour] = precipitationMean1h[i].as<float>();
+    }
+
+    i_hour++;
+    
+    if (i_hour >= NUM_1H && i_3h >= NUM_3H) break; // Stop when both 1h & 3h arrays are full
   }
 
-  display->renderWeatherForecast(forecasts, forecast.size());
-  display->renderTemperatureCurves(temperatureMean, precipitation, hours);
-  display->render24hIcons(icons3h, num_icons);
+  return true;
+}
 
-  delete[] forecasts;
+bool tryUpdateTime(WebRequest *web) {
+  web->connect();
+  
+  configTime(3600, 3600, "pool.ntp.org");
+
+  struct tm info;
+
+  // Give it up to MAX_TIME_SYNC seconds to synchronize
+  if(!getLocalTime(&info, MAX_TIME_SYNC * 1000)){
+    return false;
+  }
+
+  return true;
 }
 
 void setup() {
@@ -131,23 +143,25 @@ void setup() {
   Serial.println("");
 
   WebRequest web = WebRequest();
-  web.connect();
-  
-  configTime(3600, 3600, "pool.ntp.org");
-
-  struct tm timeinfo;
-  if(!getLocalTime(&timeinfo, 10000)){
-    Serial.println("Failed to obtain time");
-    return;
-  }
-  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 
   Display *display = new Display();
-  requestWeather(display);
-  if (first_time) {
-    first_time = false;
+
+  bool success = false;
+  Weather weather = weather_save;
+
+  // check if we should update
+  time_t current_time = time(NULL); // wrong date will be much higher than last_update = 0 as well
+  if (current_time - weather.last_update >= 24 * 3600) {
+    
+    tryUpdateTime(&web);
+    success = requestWeather(&weather);
+    if (success) {
+      weather.last_update = time(NULL);
+      weather_save = weather;
+    }
   }
 
+  display->renderWeather(weather);
   display->draw();
   delete display;
 
