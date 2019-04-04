@@ -24,6 +24,7 @@
  * THE SOFTWARE.
  */
 
+#include <stdlib.h>
 #include <pgmspace.h>
 #include "epdpaint.h"
 
@@ -197,23 +198,16 @@ void Paint::DrawStringAt(int x, int y, const char* text, sFONT* font, int colore
 *  @brief: this draws a line on the frame buffer
 */
 void Paint::DrawLine(int x0, int y0, int x1, int y1, int colored) {
-    /* Bresenham algorithm */
-    int dx = x1 - x0 >= 0 ? x1 - x0 : x0 - x1;
-    int sx = x0 < x1 ? 1 : -1;
-    int dy = y1 - y0 <= 0 ? y1 - y0 : y0 - y1;
-    int sy = y0 < y1 ? 1 : -1;
-    int err = dx + dy;
+    int dx =  abs(x1-x0), sx = x0<x1 ? 1 : -1;
+    int dy = -abs(y1-y0), sy = y0<y1 ? 1 : -1;
+    int err = dx+dy, e2; /* error value e_xy */
 
-    while((x0 != x1) && (y0 != y1)) {
-        DrawPixel(x0, y0 , colored);
-        if (2 * err >= dy) {     
-            err += dy;
-            x0 += sx;
-        }
-        if (2 * err <= dx) {
-            err += dx; 
-            y0 += sy;
-        }
+    while (1) {
+        DrawPixel(x0, y0, colored);
+        if (x0==x1 && y0==y1) break;
+        e2 = 2*err;
+        if (e2 > dy) { err += dy; x0 += sx; } /* e_xy+e_x > 0 */
+        if (e2 < dx) { err += dx; y0 += sy; } /* e_xy+e_y < 0 */
     }
 }
 

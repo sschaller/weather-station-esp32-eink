@@ -2,6 +2,9 @@
 #include "data.h"
 #include "spline.h"
 
+#define Y_CURVES 80
+#define NUM_LINES 4
+
 #define LABEL_OFFSET 35
 #define COLORED     0
 #define UNCOLORED   1
@@ -56,12 +59,10 @@ void Display::renderWeatherForecast(WeatherForecast *forecasts, int num_forecast
 
         String temp = String(String(f.tempMin, DEC) + "|" + String(f.tempMax, DEC));
         int len = temp.length() * 11;
-        if(f.tempMin < 0) len -= 5;
         int start = (80 - len) / 2;
+        if(f.tempMin < 0) start -= 3;
 
         paint->DrawStringAt(x + start, 252, temp.c_str(), &Font16, COLORED);
-
-        
         paint->DrawStringAt(x + 15, 276, dayShortStr(f.weekDay), &Font24, COLORED);
     }
 }
@@ -69,6 +70,9 @@ void Display::renderWeatherForecast(WeatherForecast *forecasts, int num_forecast
 void Display::renderIcon(int icon_type, int x, int y)
 {
     // Drawing area will be overwritten in places of icons (no need to clear)
+
+    bool is_moon = icon_type > 100;
+    icon_type = icon_type % 100; // TODO add moon
 
     bool is_sunny = (icon_type == 1 || icon_type == 26 || icon_type == 27);
     bool is_mostly_sunny = (icon_type == 2);
@@ -85,10 +89,16 @@ void Display::renderIcon(int icon_type, int x, int y)
     }
 
     // Draw template according to type
-    if (is_sunny) {
+    if (is_moon && is_sunny) {
+        paint->DrawBuffer(MOON, MOON_SIZE, x + 13, y + 8, COLORED);
+    } else if (is_sunny) {
         paint->DrawBuffer(SUNNY, SUNNY_SIZE, x + 8, y + 8, COLORED);
+    } else if (is_moon && is_mostly_sunny) {
+        paint->DrawBuffer(MOSTLY_MOON, MOSTLY_MOON_SIZE, x + 13, y + 8, COLORED);
     } else if (is_mostly_sunny) {
         paint->DrawBuffer(MOSTLY_SUNNY, MOSTLY_SUNNY_SIZE, x + 4, y + 2, COLORED);
+    } else if (is_moon && is_mostly_cloudy) {
+        paint->DrawBuffer(MOON_CLOUDY, MOON_CLOUDY_SIZE, x + 5, y, COLORED);
     } else if (is_mostly_cloudy) {
         paint->DrawBuffer(MOSTLY_CLOUDY, MOSTLY_CLOUDY_SIZE, x, y, COLORED);
     } else if (is_cloudy) {
@@ -157,81 +167,118 @@ void Display::renderIcon(int icon_type, int x, int y)
     }
 }
 
-void Display::renderTemperatureCurve(float *hours, float *temperatureMean, float y_min, float y_max) {
-    float range = fabs(y_max - y_min);
+void Display::renderTemperatureCurve(float *temperatures, int num_entries, float y_min, float y_max) {
+    float range = y_max - y_min;
 
-    float y2[24];
-    spline(hours, temperatureMean, 24, y2);
+    int limit_x = width - LABEL_OFFSET - 25;
+    float step_size = static_cast<float>(limit_x) / (num_entries - 1);
+    
+    for (int i = 1; i < num_entries; i++) {
+        int x1 = LABEL_OFFSET + (i - 1) * step_size;
+        int x2 = LABEL_OFFSET + i * step_size;
 
-    int limit_x = width - LABEL_OFFSET - 15;
+        int y1 = 80.f * (y_max - temperatures[i - 1]) / range;
+        int y2 = 80.f * (y_max - temperatures[i]) / range;
 
-    float y;
-    int y_n;
-    for (int i = 0; i < limit_x; i++) {
-        splint(hours, temperatureMean, y2, 24, 24.f * i / limit_x, &y);
-
-        y_n = floorf(56.f * (1.f - (y - y_min) / range));
-        paint->DrawPixel(LABEL_OFFSET + i, 127 + y_n, COLORED);
-        paint->DrawPixel(LABEL_OFFSET + i, 128 + y_n, COLORED);
+        paint->DrawLine(x1, Y_CURVES + y1, x2, Y_CURVES + y2, COLORED);
+        paint->DrawLine(x1, Y_CURVES + y1 - 1, x2, Y_CURVES + y2 - 1, COLORED);
     }
 }
 
-void Display::renderTemperatureCurves(float *temperatureMean) {
-    float hours[24];
+void Display::renderTemperatureCurves(float *temperatures, float *precipitation, int num_points) {
     float y_min = 100.f;
     float y_max = -100.f;
 
-    for (int i = 0; i < 24; i++) {
-        hours[i] = static_cast<float>(i);
-        
-        if(temperatureMean[i] < y_min) y_min = temperatureMean[i];
-        if(temperatureMean[i] > y_max) y_max = temperatureMean[i];
+    for (int i = 0; i < num_points; i++) {
+        if(temperatures[i] < y_min) y_min = temperatures[i];
+        if(temperatures[i] > y_max) y_max = temperatures[i];
     }
 
     float step = 5.f;
 
-    float y_upper = 5 * ceilf(y_max / 5);
-    float y_lower = 5 * floorf(y_min / 5);
+    float y_lower = step * floorf(y_min / step);
+    float y_upper = step * ceilf(y_max / step);
+
+    int steps = (y_upper - y_lower) / step;
+
+    if (steps > NUM_LINES) {
+        step = 10.f;
+
+        y_lower = step * floorf(y_min / step);
+        y_upper = step * ceilf(y_max / step);
+
+        steps = (y_upper - y_lower) / step;
+    }
+
+    float rest = NUM_LINES - steps;
+
+    int rest_upper = floorf(rest / 2);
+
+    if (y_upper - y_max <= y_min - y_lower) {
+        rest_upper = ceilf(rest / 2);
+    }
+    int rest_lower = rest - rest_upper;
+
+    y_lower -= rest_lower * step;
+    y_upper += rest_upper * step;
+
+    for (int i = 0; i <= NUM_LINES; i++) {
+        int y = Y_CURVES + (NUM_LINES - i) * 80.f / NUM_LINES;
+        paint->DrawHorizontalLine(LABEL_OFFSET, y, width - LABEL_OFFSET - 25, COLORED);
+
+        int y_text = static_cast<int>(i * step + y_lower);
+        String text = String(y_text);
+        paint->DrawStringAt(LABEL_OFFSET - 4 - text.length() * 11, y - 6, text.c_str(), &Font16, COLORED);
+    }
+
+    renderTemperatureCurve(temperatures, num_points, y_lower, y_upper);
+
+    renderPrecipitation(precipitation, num_points);
+}
+
+void Display::renderPrecipitation(float *precipitation, int num_points) {
+    float y_max = -100.f;
+    for(int i = 0; i < num_points; i++) {
+        if(precipitation[i] > y_max) y_max = precipitation[i];
+    }
+
+    float step = fmax(1.f, ceilf(y_max / NUM_LINES));
+    
+    float y_upper = step * NUM_LINES;
+    float y_lower = 0.f;
 
     float range = y_upper - y_lower;
 
-    if(range > 20) {
-        step = 10.f;
+    float limit_x = width - LABEL_OFFSET - 25;
+    int bar_x = (limit_x - (num_points-1) * 2) / num_points;
 
-        y_upper = 10 * ceilf(y_max / 10);
-        y_lower = 10 * floorf(y_min / 10);
+    for(int i = 0; i < num_points; i++) {
+        if (precipitation[i] == 0) continue;
 
-        range = y_upper - y_lower;
+        int x = i * (bar_x + 2);
+        int y0 = 80.f * (y_upper - precipitation[i]) / range;
+        int y1 = 80;
+        
+        paint->DrawFilledRectangle(LABEL_OFFSET + x, Y_CURVES + y0, LABEL_OFFSET + x + bar_x, Y_CURVES + y1, COLORED);
     }
 
-    Serial.print(y_min);
-    Serial.print(" ");
-    Serial.println(y_max);
+    for(int i = 0; i <= NUM_LINES; i++) {
+        int y = Y_CURVES + (NUM_LINES - i) * 80.f / NUM_LINES;
 
-    for (int i = 0; i * step <= range; i++) {
-
-        int y = static_cast<int>(floorf(56.f * (1.f - (i * step) / range)));
         int y_text = static_cast<int>(i * step + y_lower);
-        String t = String(y_text);
-        int text_offset = t.length() * 11;
-
-        paint->DrawHorizontalLine(LABEL_OFFSET, 120 + y + 6, width - LABEL_OFFSET - 25, COLORED);
-        paint->DrawStringAt(LABEL_OFFSET - 4 - text_offset, 120 + y, t.c_str(), &Font16, COLORED);
+        String text = String(y_text);
+        paint->DrawStringAt(width - 25 + 4, y - 6, text.c_str(), &Font16, COLORED);
     }
-
-    renderTemperatureCurve(hours, temperatureMean, y_lower, y_upper);
 }
 
-void Display::render24hIcons(int *icons)
+void Display::render24hIcons(int *icons, int num_steps)
 {
     int start = 6;
-    int end = 24;
     int step = 3;
 
-    int steps = (end - start) / step;
-    int part = (width - LABEL_OFFSET - 25) / steps;
+    int part = (width - LABEL_OFFSET - 25) / (num_steps - 1);
 
-    for (int i = 0; i <= steps; i++) {
+    for (int i = 0; i < num_steps; i++) {
 
         int hour = start + i * step;
 
@@ -239,7 +286,8 @@ void Display::render24hIcons(int *icons)
 
         int x = LABEL_OFFSET + i * part - text.length() * 14 / 2;
 
-        paint->DrawStringAt(x, 70, text.c_str(), &Font20, COLORED);
+        renderIcon(icons[i], LABEL_OFFSET + i * part - 25, 28);
+        paint->DrawStringAt(x, 4, text.c_str(), &Font20, COLORED);
     }
 }
 

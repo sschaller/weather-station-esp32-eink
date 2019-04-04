@@ -1,8 +1,7 @@
-#include <NTPClient.h>
-#include <WiFiUdp.h>
-
 #include "webrequest.h"
 #include "wifi_login.h"
+
+#define NUM_TRIES 20
 
 bool WebRequest::connect() {
 
@@ -12,24 +11,26 @@ bool WebRequest::connect() {
 
   Serial.print("Attempting to connect to SSID: ");
   Serial.println(ssid);
+  
   WiFi.begin(ssid, password);
 
   int num_tries = 0;
-  // attempt to connect to Wifi network:
-  while (WiFi.status() != WL_CONNECTED && num_tries < 5) {
-    Serial.print(".");
-    // wait 1 second for re-trying
-    delay(1000);
-    
-    if (num_tries >= 5) {
+  while(WiFi.status() != WL_CONNECTED) {
+    if (num_tries >= NUM_TRIES) {
       Serial.println("Could not connect to WiFi");
       return false;
     }
     num_tries++;
+    
+    Serial.print(".");
+    // wait 1 second for re-trying
+    delay(1000);
   }
 
   Serial.print("Connected to ");
   Serial.println(ssid);
+
+  connected = true;
   
   return true;
 }
@@ -62,27 +63,15 @@ bool WebRequest::requestWeather() {
   return true;
 }
 
-bool WebRequest::updateTime() {
-  if (!connect()) {
-    return false;
-  }
-  
-  WiFiUDP ntpUDP;
-  NTPClient timeClient(ntpUDP);
-
-  timeClient.begin();
-  bool success = timeClient.forceUpdate();
-  timeClient.end();
-  
-  return success;
-}
-
 void WebRequest::disconnect() {
   if(!connected) {
     Serial.println("Not connected, no need to disconnect");
     return;
   }
   client.stop();
+
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
 }
 
 WebRequest::~WebRequest() {

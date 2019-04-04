@@ -4,7 +4,7 @@
 #include <WiFiClientSecure.h>
 
 class WebRequest {
-  bool connected;
+  bool connected = false;
   
   public:
     WiFiClientSecure client;
@@ -16,7 +16,6 @@ class WebRequest {
     void disconnect();
 
     bool requestWeather();
-    bool updateTime();
 };
 
 #endif /* WebRequest_h */

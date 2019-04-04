@@ -10,6 +10,10 @@
 
 #define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
 #define TIME_TO_SLEEP  10        /* Time ESP32 will go to sleep (in seconds) */
+
+#define HOUR_START 6
+#define HOUR_END 24
+
 RTC_DATA_ATTR bool first_time = true;
 
 void requestWeather(Display *display) {
@@ -45,8 +49,6 @@ void requestWeather(Display *display) {
   Serial.println(buffer);
 
   JsonArray icons = doc["graph"]["weatherIcon3h"];
-  JsonArray temperatureMin1h = doc["graph"]["temperatureMin1h"];
-  JsonArray temperatureMax1h = doc["graph"]["temperatureMax1h"];
   JsonArray temperatureMean1h = doc["graph"]["temperatureMean1h"];
   JsonArray precipitationMean1h = doc["graph"]["precipitationMean1h"];
 
@@ -60,6 +62,9 @@ void requestWeather(Display *display) {
     int temperatureMin = f["temperatureMin"].as<int>();
     int precipitation = f["precipitation"].as<int>();
 
+    struct tm tm;
+    strptime(date, "%Y-%m-%d", &tm);
+
     Serial.print(date);
     Serial.print(" ");
     Serial.print(icon);
@@ -71,10 +76,6 @@ void requestWeather(Display *display) {
     Serial.print(precipitation);
     Serial.println("");
 
-
-    struct tm tm;
-    strptime(date, "%Y-%m-%d", &tm);
-
     int weekDay = tm.tm_wday + 1; // 1 = sunday
 
     WeatherForecast forecast = {.weekDay = weekDay, .icon = icon, .tempMax = temperatureMax, .tempMin = temperatureMin, .precipitation = precipitation};
@@ -83,39 +84,42 @@ void requestWeather(Display *display) {
   }
 
   int hour = tm_start.tm_hour;
+
+  const int num_icons = (HOUR_END - HOUR_START) / 3 + 1;
+  const int num_1h = HOUR_END - HOUR_START + 1;
+
+  int icons3h[num_icons];
+  float temperatureMean[num_1h];
+  float precipitation[num_1h];
+  
   bool started = false;
   int hours = 0;
-
-  int icons3h[24];
-  float temperatureMean[24];
-  float temperatureMax[24];
-  float temperatureMin[24];
   for (int i = 0; i < 48; i++) {
 
-    if (!started && (hour + i) % 24 < 6) continue;
+    if (!started && (hour + i) % 24 != HOUR_START) continue;
     started = true;
   
     if (icons.size() > i && hours % 3 == 0) {
-      int icon_idx = floorf((float)hours / 3);
-      icons3h[icon_idx] = icons[i].as<int>();
+      icons3h[(int)floorf((float)hours / 3)] = icons[(int)floorf((float)i / 3)].as<int>();
     }
     if (temperatureMean1h.size() > i) {
-      temperatureMean[i] = temperatureMean1h[i].as<float>();
+      temperatureMean[hours] = temperatureMean1h[i].as<float>();
     } else {
-      temperatureMean[i] = 0.f;
+      temperatureMean[hours] = 0.f;
+    }
+    if (precipitationMean1h.size() > i) {
+      precipitation[hours] = precipitationMean1h[i].as<float>();
+    } else {
+      precipitation[hours] = 0.f;
     }
 
     hours++;
-    if ((hour + i) % 24 == 1) break; // stop at 1 AM
+    if ((hour + i) % 24 == HOUR_END % 24) break; // stop at 1 AM
   }
 
-  Serial.println(hours);
-
   display->renderWeatherForecast(forecasts, forecast.size());
-
-  display->renderTemperatureCurves(temperatureMean);
-
-  display->render24hIcons(icons3h);
+  display->renderTemperatureCurves(temperatureMean, precipitation, hours);
+  display->render24hIcons(icons3h, num_icons);
 
   delete[] forecasts;
 }
@@ -126,16 +130,24 @@ void setup() {
   delay(100);
   Serial.println("");
 
-  // WebRequest web = WebRequest();
-  // bool success = web.updateTime();
+  WebRequest web = WebRequest();
+  web.connect();
+  
+  configTime(3600, 3600, "pool.ntp.org");
+
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo, 10000)){
+    Serial.println("Failed to obtain time");
+    return;
+  }
+  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 
   Display *display = new Display();
-
+  requestWeather(display);
   if (first_time) {
-    requestWeather(display);
     first_time = false;
   }
-  
+
   display->draw();
   delete display;
 
