@@ -19,14 +19,17 @@ class Display {
     public:
         ~Display();
         bool initialize(bool clear_buffer);
-        void renderWeather(Weather weather);
-        void renderWeatherForecast(WeatherForecast *forecast, int num_forecasts);
+        void calculateResolution(float &y_lower, float &y_upper, float &step);
         void renderIcon(uint8_t icon_type, int x, int y);
 
-        void renderTemperatureCurve(float *temperatures, int num_points, float y_min, float y_max);
-        void renderTemperatureCurves(float *temperatures, float *precipitation, int num_points);
+        void renderWeatherForecast(const WeatherForecast *forecast, int num_forecasts);
+        void renderTemperatureCurve(float *temperatures, int num_points);
         void renderPrecipitation(float *precipitation, int num_points);
+        void renderDailyGraph(float *temperatures, float *precipitation, int num_points, int current_hour);
         void render24hIcons(uint8_t *icons, int num_steps);
+        void renderWeather(Weather weather, int current_hour);
+        void renderTime(time_t t, int x, int y);
+
         void draw();
 
 };

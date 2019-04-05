@@ -1,6 +1,14 @@
 #ifndef WeatherForecast_h
 #define WeatherForecast_h
 
+#include <stdint.h>
+#include <Arduino.h>
+
+#define ARDUINOJSON_USE_LONG_LONG 1
+#include <ArduinoJson.h>
+
+#define JSON_CAPACITY 32768
+
 #define HOUR_START 6
 #define NUM_FORECASTS 5
 #define NUM_1H 19
@@ -21,5 +29,9 @@ struct Weather {
     float temperatures[NUM_1H];
     WeatherForecast forecasts[NUM_FORECASTS];
 };
+
+namespace WeatherAPI {
+    bool parseWeather(DynamicJsonDocument &doc, Weather *weather);
+}
 
 #endif /* WeatherForecast_h */
