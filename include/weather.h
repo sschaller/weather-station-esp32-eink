@@ -10,7 +10,7 @@
 #define JSON_CAPACITY 32768
 
 #define HOUR_START 6
-#define NUM_FORECASTS 5
+#define NUM_FORECASTS 6
 #define NUM_1H 19
 #define NUM_3H 7
 

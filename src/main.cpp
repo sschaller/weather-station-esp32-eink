@@ -9,6 +9,7 @@
 #define UPDATE_FREQUENCY 3 * 3600
 
 RTC_DATA_ATTR Weather weather_save = {0};
+RTC_DATA_ATTR char tz[33] = {0};
 
 bool requestWeather(WebRequest &web, Weather *weather) {
   DynamicJsonDocument doc(JSON_CAPACITY);
@@ -44,9 +45,13 @@ bool tryUpdateTime(WebRequest *web) {
 
   // Give it up to MAX_TIME_SYNC seconds to synchronize
   if(!getLocalTime(&info, MAX_TIME_SYNC * 1000)){
+    Serial.println("Failed to get time");
     return false;
   }
 
+  // copy TZ environment variable to RTC RAM
+  strcpy(tz, getenv("TZ"));
+  
   return true;
 }
 
@@ -58,28 +63,57 @@ void setup() {
   Display *display = new Display();
   Weather weather = weather_save;
 
+  if (strlen(tz) > 0) {
+    // if set load TZ environment variable from RTC RAM
+    setenv("TZ", tz, 1);
+    tzset();
+  }
+
   // check if we should update
   time_t current_time = time(NULL); // wrong date will be much higher than last_update = 0 as well
+  struct tm current = *localtime(&current_time);
 
-  Serial.print(String(current_time) + " " + String(weather.last_update));
-  if (current_time == 0 || current_time - weather.last_update >= UPDATE_FREQUENCY) {
-    
-    tryUpdateTime(&web);
-    bool success = requestWeather(web, &weather);
-    if (success) {
+  int rounded_hour = current.tm_hour + (int)roundf((float)current.tm_min / 60);
+
+  UpdateError error = UpdateError::ENone;
+  if (current_time == 0 || rounded_hour % 3 == 0) {
+    if (!web.connect()) {
+      error = UpdateError::EConnection;
+    }
+    if (error == UpdateError::ENone && !tryUpdateTime(&web)) {
+      error = UpdateError::ETime;
+    }
+    if (error == UpdateError::ENone && !requestWeather(web, &weather)) {
+      error = UpdateError::EWeather;
+    }
+    if (error == UpdateError::ENone) {
       weather_save = weather;
+    } else {
+      // display UpdateError
+      Serial.print("Update Error: ");
+      Serial.println(error);
     }
   }
 
   current_time = time(NULL);
-  struct tm current = *localtime(&current_time);
+  current = *localtime(&current_time);
 
   display->initialize(true);
-  display->renderWeather(weather, current.tm_hour);
 
-  display->renderTime(current_time, 280, 80);
-  display->renderTime(weather.last_update, 340, 80);
+  // display->renderText(String(rounded_hour).c_str(), 180, 80);
+  // display->renderTime(original_time, 220, 80);
 
+  rounded_hour = current.tm_hour + (int)roundf((float)current.tm_min / 60);
+  display->renderWeather(weather, rounded_hour);
+
+  if (error != UpdateError::ENone) {
+    display->renderError(error);
+  }
+
+  // display->renderTime(current_time, 280, 80);
+  // display->renderTime(weather.last_update, 340, 80);
+
+  // display->print();
   display->draw();
   delete display;
 

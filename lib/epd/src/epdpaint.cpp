@@ -321,41 +321,38 @@ void Paint::DrawFilledCircle(int x, int y, int radius, int colored) {
     } while(x_pos <= 0);
 }
 
-void Paint::DrawBuffer(const unsigned char *ptr, const int *size, int x, int y, int colored) {
-    const int width = size[0];
-    const int height = size[1];
+void Paint::DrawBuffer(const unsigned char *ptr, const int *info, int x, int y, int colored) {
+    int width = info[0], height = info[1], offset_x = info[2], offset_y = info[3];
     
     int i, j, p;
     for (j = 0; j < height; j++) {
         for (i = 0; i < width; i++) {
             p = j * width + i;
             if ((ptr[p / 8] & (0x80 >> (p % 8))) == 0) {
-                DrawPixel(x + i, y + j, colored);
+                DrawPixel(offset_x + x + i, offset_y + y + j, colored);
             }
         }
     }
 }
 
-void Paint::DrawBufferOpaque(const unsigned char *ptr, const int *size, int x, int y, int colored) {
-    const int width = size[0];
-    const int height = size[1];
+void Paint::DrawBufferOpaque(const unsigned char *ptr, const int *info, int x, int y, int colored) {
+    int width = info[0], height = info[1], offset_x = info[2], offset_y = info[3];
     
     int i, j, p;
     for (j = 0; j < height; j++) {
         for (i = 0; i < width; i++) {
             p = j * width + i;
             if ((ptr[p / 8] & (0x80 >> (p % 8))) == 0) {
-                DrawPixel(x + i, y + j, colored);
+                DrawPixel(offset_x + x + i, offset_y + y + j, colored);
             } else {
-                DrawPixel(x + i, y + j, 1 - colored);
+                DrawPixel(offset_x + x + i, offset_y + y + j, 1 - colored);
             }
         }
     }
 }
 
-void Paint::DrawBufferAlpha(const unsigned char *ptr, const unsigned char *alpha, const int *size, int x, int y, int colored) {
-    const int width = size[0];
-    const int height = size[1];
+void Paint::DrawBufferAlpha(const unsigned char *ptr, const unsigned char *alpha, const int *info, int x, int y, int colored) {
+    int width = info[0], height = info[1], offset_x = info[2], offset_y = info[3];
     
     int i, j, p;
     for (j = 0; j < height; j++) {
@@ -365,11 +362,33 @@ void Paint::DrawBufferAlpha(const unsigned char *ptr, const unsigned char *alpha
                 continue;
             }
             if ((ptr[p / 8] & (0x80 >> (p % 8))) == 0) {
-                DrawPixel(x + i, y + j, colored);
+                DrawPixel(offset_x + x + i, offset_y + y + j, colored);
             } else {
-                DrawPixel(x + i, y + j, 1 - colored);
+                DrawPixel(offset_x + x + i, offset_y + y + j, 1 - colored);
             }
         }
+    }
+}
+
+void Paint::DrawBufferLimited(const unsigned char *ptr, int total_width, int s_x, int s_y, int width, int height, int x, int y, int colored) {
+    int i, j, c, p;
+    for (j = 0; j < height; j++) {
+        c = (s_y + j) * total_width;
+
+        for (i = 0; i < width; i++) {
+            p = c + s_x + i;
+            if ((ptr[p / 8] & (0x80 >> (p % 8))) == 0) {
+                DrawPixel(x + i, y + j, colored);
+            }
+        }
+    }
+}
+
+void Paint::DrawArrowUp(int x, int y, int size, int colored) {
+    int sx = x - size / 2;
+    for (int i = 0; i < size; i++) {
+        int h = (i > size / 2) ? size - i : i + 1;
+        DrawVerticalLine(sx + i, y - h, h, colored);
     }
 }
 

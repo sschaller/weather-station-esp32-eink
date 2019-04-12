@@ -62,9 +62,11 @@ public:
     void DrawFilledRectangle(int x0, int y0, int x1, int y1, int colored);
     void DrawCircle(int x, int y, int radius, int colored);
     void DrawFilledCircle(int x, int y, int radius, int colored);
-    void DrawBuffer(const unsigned char *ptr, const int *size, int x, int y, int colored);
-    void DrawBufferOpaque(const unsigned char *ptr, const int *size, int x, int y, int colored);
-    void DrawBufferAlpha(const unsigned char *ptr, const unsigned char *alpha, const int *size, int x, int y, int colored);
+    void DrawBuffer(const unsigned char *ptr, const int *info, int x, int y, int colored);
+    void DrawBufferOpaque(const unsigned char *ptr, const int *info, int x, int y, int colored);
+    void DrawBufferAlpha(const unsigned char *ptr, const unsigned char *alpha, const int *info, int x, int y, int colored);
+    void DrawBufferLimited(const unsigned char *ptr, int total_width, int s_x, int s_y, int width, int height, int x, int y, int colored);
+    void DrawArrowUp(int x, int y, int size, int colored);
 
 private:
     unsigned char* image;

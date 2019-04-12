@@ -21,21 +21,24 @@ namespace WeatherAPI {
     time_t start = static_cast<time_t>(start_s / 1000);
     struct tm tm_start = *localtime(&start);
 
+    char date_buffer[12];
+    strftime(date_buffer, sizeof(date_buffer), "%Y-%m-%d", &tm_start);
+
     JsonArray forecasts = doc["forecast"];
     JsonArray icons = doc["graph"]["weatherIcon3h"];
     JsonArray temperatureMean1h = doc["graph"]["temperatureMean1h"];
     JsonArray precipitationMean1h = doc["graph"]["precipitationMean1h"];
     
     int i_forecast = 0;
+    bool started = false;
     for(JsonObject f : forecasts) {
       const char *date = f["dayDate"].as<char *>();
-      Serial.println(date);
+
+      if (!started && strcmp(date, date_buffer) != 0) continue;
+      started = true;
 
       struct tm tm = {0};
       strptime(date, "%Y-%m-%d", &tm);
-
-      time_t t = mktime(&tm);
-      if (t < current_time) continue;
 
       uint8_t icon = static_cast<uint8_t>(f["iconDay"].as<unsigned char>());
       float temperatureMax = f["temperatureMax"].as<float>();
@@ -53,7 +56,7 @@ namespace WeatherAPI {
 
     int hour = tm_start.tm_hour;
     
-    bool started = false;
+    started = false;
     int i_hour = 0;
     for (int i = 0; i < 48; i++) {
 

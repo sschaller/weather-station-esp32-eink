@@ -1,6 +1,5 @@
 #include "display.h"
 #include "data.h"
-#include "spline.h"
 
 #define Y_CURVES 100
 #define NUM_LINES 4
@@ -86,107 +85,194 @@ void Display::renderIcon(uint8_t icon_type, int x, int y)
 {
     // Drawing area will be overwritten in places of icons (no need to clear)
 
-    bool is_moon = icon_type > 100;
-    icon_type = icon_type % 100; // TODO add moon
+    int x_lowest = 50, x_highest = 0, y_lowest = 48, y_highest = 0;
 
-    bool is_sunny = (icon_type == 1 || icon_type == 26 || icon_type == 27);
-    bool is_mostly_sunny = (icon_type == 2);
-    bool is_mostly_cloudy = (icon_type == 3 || icon_type == 4 || (icon_type >= 6 && icon_type <= 13) || (icon_type >= 29 && icon_type <= 34));
-    bool is_cloudy = (icon_type == 5 || (icon_type >= 14 && icon_type <= 25) || icon_type == 35);
-    bool is_dark_cloud = ((icon_type >= 4 && icon_type <= 11) || (icon_type >= 13 && icon_type <= 25) || icon_type == 33 || icon_type == 34);    
+    const unsigned char *basic = nullptr;
+    const int *basic_info = nullptr;
+    getTemplate(icon_type, &basic_info, &basic);
 
-    // calculate offset for different cloud versions
-    int offset_cloud_x = is_cloudy ? 5 : 10;
+    const unsigned char *precipitation = nullptr;
+    const unsigned char *precipitation_alpha = nullptr;
+    const int *precipitation_info = nullptr;
+    getPrecipitation(icon_type, &precipitation_info, &precipitation, &precipitation_alpha);
 
+    if (basic_info != nullptr) {
+        if (basic_info[2] < x_lowest) x_lowest = basic_info[2];
+        if (basic_info[3] < y_lowest) y_lowest = basic_info[3];
+        if (basic_info[2] + basic_info[0] > x_highest) x_highest = basic_info[2] + basic_info[0];
+        if (basic_info[3] + basic_info[1] > y_highest) y_highest = basic_info[3] + basic_info[1];
+    }
+
+    if (precipitation_info != nullptr) {
+        if (precipitation_info[2] < x_lowest) x_lowest = basic_info[2];
+        if (precipitation_info[3] < y_lowest) y_lowest = basic_info[3];
+        if (precipitation_info[2] + precipitation_info[0] > x_highest) x_highest = precipitation_info[2] + precipitation_info[0];
+        if (precipitation_info[3] + precipitation_info[1] > y_highest) y_highest = precipitation_info[3] + precipitation_info[1];
+    }
+
+    int offset_x = (int)ceilf((50.f - (x_highest - x_lowest)) / 2) - x_lowest;
+    int offset_y = (int)ceilf((48.f - (y_highest - y_lowest)) / 2) - y_lowest;
+
+    x += offset_x;
+    y += offset_y;
+
+    icon_type = icon_type % 100;
+    bool is_dark_cloud = ((icon_type >= 4 && icon_type <= 11) || (icon_type >= 13 && icon_type <= 25) || icon_type == 33 || icon_type == 34);
     if (is_dark_cloud) {
-        // draw background pattern for cloud first    
-        paint->DrawBuffer(CLOUD_DARK, CLOUD_DARK_SIZE, x + offset_cloud_x, y + 11, COLORED);
+        // draw background pattern for cloud first - align cloud bottom right
+        paint->DrawBuffer(CLOUD_DARK, CLOUD_DARK_INFO, x + basic_info[2] + basic_info[0] - CLOUD_DARK_INFO[0], y + basic_info[3] + basic_info[1] - CLOUD_DARK_INFO[1], COLORED);
     }
 
     // Draw template according to type
-    if (is_moon && is_sunny) {
-        paint->DrawBuffer(MOON, MOON_SIZE, x + 13, y + 8, COLORED);
-    } else if (is_sunny) {
-        paint->DrawBuffer(SUNNY, SUNNY_SIZE, x + 8, y + 8, COLORED);
-    } else if (is_moon && is_mostly_sunny) {
-        paint->DrawBuffer(MOSTLY_MOON, MOSTLY_MOON_SIZE, x + 13, y + 8, COLORED);
-    } else if (is_mostly_sunny) {
-        paint->DrawBuffer(MOSTLY_SUNNY, MOSTLY_SUNNY_SIZE, x + 4, y + 2, COLORED);
-    } else if (is_moon && is_mostly_cloudy) {
-        paint->DrawBuffer(MOON_CLOUDY, MOON_CLOUDY_SIZE, x + 5, y, COLORED);
-    } else if (is_mostly_cloudy) {
-        paint->DrawBuffer(MOSTLY_CLOUDY, MOSTLY_CLOUDY_SIZE, x, y, COLORED);
-    } else if (is_cloudy) {
-        paint->DrawBuffer(CLOUDY, CLOUDY_SIZE, x + 5, y + 11, COLORED);
+    if (basic_info != nullptr && basic != nullptr) {
+        paint->DrawBuffer(basic, basic_info, x, y, COLORED);
     }
 
-    // custom types
+    if (precipitation_info != nullptr && precipitation != nullptr && precipitation_alpha != nullptr) {
+        // align cloud bottom right
+        paint->DrawBufferAlpha(precipitation, precipitation_alpha, precipitation_info, x + basic_info[2] + basic_info[0] - CLOUD_DARK_INFO[0], y, COLORED);
+    }
+
+    // special types - no impact on height so leave out for calculation
     if (icon_type == 26) {
         // draw high fog, no transparency
-        paint->DrawBufferOpaque(FOG_TOP, FOG_TOP_SIZE, x + 5, y + 7, COLORED);
+        paint->DrawBufferOpaque(FOG_TOP, FOG_TOP_INFO, x, y, COLORED);
     } else if (icon_type == 27) {
         // draw low fog, no transparency
-        paint->DrawBufferOpaque(FOG_BOTTOM, FOG_BOTTOM_SIZE, x + 5, y + 26, COLORED);
+        paint->DrawBufferOpaque(FOG_BOTTOM, FOG_BOTTOM_INFO, x, y, COLORED);
     } else if (icon_type == 28) {
         // fog - draw both
-        paint->DrawBuffer(FOG_TOP, FOG_TOP_SIZE, x + 5, y + 12, COLORED);
-        paint->DrawBuffer(FOG_BOTTOM, FOG_BOTTOM_SIZE, x + 5, y + 26, COLORED);
-    } else if (icon_type == 12) {
+        paint->DrawBuffer(FOG_TOP, FOG_TOP_INFO, x, y, COLORED);
+        paint->DrawBuffer(FOG_BOTTOM, FOG_BOTTOM_INFO, x, y, COLORED);
+    }
+}
+
+void Display::getTemplate(uint8_t icon_type, const int **info, const unsigned char **data) {
+
+    bool is_moon = icon_type > 100;
+    icon_type = icon_type % 100;
+
+    bool is_sunny = (icon_type == 1 || icon_type == 26 || icon_type == 27 || icon_type == 28);
+    bool is_mostly_sunny = (icon_type == 2);
+    bool is_mostly_cloudy = (icon_type == 3 || icon_type == 4 || (icon_type >= 6 && icon_type <= 13) || (icon_type >= 29 && icon_type <= 34));
+    bool is_cloudy = (icon_type == 5 || (icon_type >= 14 && icon_type <= 25) || icon_type == 35);
+
+    if (is_moon && is_sunny) {
+        *info = &MOON_INFO[0];
+        *data = &MOON[0];
+    } else if (is_sunny) {
+        *info = &SUNNY_INFO[0];
+        *data = &SUNNY[0];
+    } else if (is_moon && is_mostly_sunny) {
+        *info = &MOSTLY_MOON_INFO[0];
+        *data = &MOSTLY_MOON[0];
+    } else if (is_mostly_sunny) {
+        *info = &MOSTLY_SUNNY_INFO[0];
+        *data = &MOSTLY_SUNNY[0];
+    } else if (is_moon && is_mostly_cloudy) {
+        *info = &MOON_CLOUDY_INFO[0];
+        *data = &MOON_CLOUDY[0];
+    } else if (is_mostly_cloudy) {
+        *info = &MOSTLY_CLOUDY_INFO[0];
+        *data = &MOSTLY_CLOUDY[0];
+    } else if (is_cloudy) {
+        *info = &CLOUDY_INFO[0];
+        *data = &CLOUDY[0];
+    }
+}
+
+void Display::getPrecipitation(uint8_t icon_type, const int **info, const unsigned char **data, const unsigned char **alpha) {
+
+    icon_type = icon_type % 100;
+    
+    if (icon_type == 12) {
         // 1 bolt
-        paint->DrawBufferAlpha(BOLT_1, BOLT_1_ALPHA, BOLT_1_SIZE, x + offset_cloud_x + 15, y + 28, COLORED);
+        *info = &BOLT_1_INFO[0];
+        *data = &BOLT_1[0];
+        *alpha = &BOLT_1_ALPHA[0];
     } else if (icon_type == 13 || icon_type == 23) {
         // 1 bolt, 2 rain
-        paint->DrawBufferAlpha(BOLT_1_RAIN_2, BOLT_1_RAIN_2_ALPHA, BOLT_1_RAIN_2_SIZE, x + offset_cloud_x + 9, y + 28, COLORED);
+        *info = &BOLT_1_RAIN_2_INFO[0];
+        *data = &BOLT_1_RAIN_2[0];
+        *alpha = &BOLT_1_RAIN_2_ALPHA[0];
     } else if (icon_type == 24) {
         // 2 bolts, 2 rain
-        paint->DrawBufferAlpha(BOLT_2_RAIN_2, BOLT_2_RAIN_2_ALPHA, BOLT_2_RAIN_2_SIZE, x + offset_cloud_x + 9, y + 28, COLORED);
+        *info = &BOLT_2_RAIN_2_INFO[0];
+        *data = &BOLT_2_RAIN_2[0];
+        *alpha = &BOLT_2_RAIN_2_ALPHA[0];
     } else if (icon_type == 25) {
         // 2 bolts, 4 rain
-        paint->DrawBufferAlpha(BOLT_2_RAIN_4, BOLT_2_RAIN_4_ALPHA, BOLT_2_RAIN_4_SIZE, x + offset_cloud_x + 3, y + 28, COLORED);
+        *info = &BOLT_2_RAIN_4_INFO[0];
+        *data = &BOLT_2_RAIN_4[0];
+        *alpha = &BOLT_2_RAIN_4_ALPHA[0];
     } else if (icon_type == 6 || icon_type == 29) {
         // 1 rain
-        paint->DrawBufferAlpha(RAIN_1, RAIN_1_ALPHA, RAIN_1_SIZE, x + offset_cloud_x + 15, y + 32, COLORED);
+        *info = &RAIN_1_INFO[0];
+        *data = &RAIN_1[0];
+        *alpha = &RAIN_1_ALPHA[0];
     } else if (icon_type == 9 || icon_type == 14 || icon_type == 32) {
         // 2 rain
-        paint->DrawBufferAlpha(RAIN_2, RAIN_2_ALPHA, RAIN_2_SIZE, x + offset_cloud_x + 12, y + 32, COLORED);
+        *info = &RAIN_2_INFO[0];
+        *data = &RAIN_2[0];
+        *alpha = &RAIN_2_ALPHA[0];
     } else if (icon_type == 17 || icon_type == 33) {
         // 3 rain
-        paint->DrawBufferAlpha(RAIN_3, RAIN_3_ALPHA, RAIN_3_SIZE, x + offset_cloud_x + 11, y + 31, COLORED);
+        *info = &RAIN_3_INFO[0];
+        *data = &RAIN_3[0];
+        *alpha = &RAIN_3_ALPHA[0];
     } else if (icon_type == 20) {
         // 4 rain
-        paint->DrawBufferAlpha(RAIN_4, RAIN_4_ALPHA, RAIN_4_SIZE, x + offset_cloud_x + 7, y + 30, COLORED);
+        *info = &RAIN_4_INFO[0];
+        *data = &RAIN_4[0];
+        *alpha = &RAIN_4_ALPHA[0];
     } else if (icon_type == 8 || icon_type == 30) {
         // 1 snow
-        paint->DrawBufferAlpha(SNOW_1, SNOW_1_ALPHA, SNOW_1_SIZE, x + offset_cloud_x + 14, y + 33, COLORED);
+        *info = &SNOW_1_INFO[0];
+        *data = &SNOW_1[0];
+        *alpha = &SNOW_1_ALPHA[0];
     } else if (icon_type == 11 || icon_type == 16) {
         // 2 snow
-        paint->DrawBufferAlpha(SNOW_2, SNOW_2_ALPHA, SNOW_2_SIZE, x + offset_cloud_x + 11, y + 32, COLORED);
+        *info = &SNOW_2_INFO[0];
+        *data = &SNOW_2[0];
+        *alpha = &SNOW_2_ALPHA[0];
     } else if (icon_type == 19 || icon_type == 34) {
         // 3 snow
-        paint->DrawBufferAlpha(SNOW_3, SNOW_3_ALPHA, SNOW_3_SIZE, x + offset_cloud_x + 11, y + 31, COLORED);
+        *info = &SNOW_3_INFO[0];
+        *data = &SNOW_3[0];
+        *alpha = &SNOW_3_ALPHA[0];
     } else if (icon_type == 22) {
         // 4 snow
-        paint->DrawBufferAlpha(SNOW_4, SNOW_4_ALPHA, SNOW_4_SIZE, x + offset_cloud_x + 4, y + 33, COLORED);
+        *info = &SNOW_4_INFO[0];
+        *data = &SNOW_4[0];
+        *alpha = &SNOW_4_ALPHA[0];
     } else if (icon_type == 7 || icon_type == 15 || icon_type == 31) {
         // 1 rain 1 snow
-        paint->DrawBufferAlpha(RAIN_1_SNOW_1, RAIN_1_SNOW_1_ALPHA, RAIN_1_SNOW_1_SIZE, x + offset_cloud_x + 12, y + 31, COLORED);
+        *info = &RAIN_1_SNOW_1_INFO[0];
+        *data = &RAIN_1_SNOW_1[0];
+        *alpha = &RAIN_1_SNOW_1_ALPHA[0];
     } else if (icon_type == 10) {
         // 2 rain 1 snow
-        paint->DrawBufferAlpha(RAIN_2_SNOW_1, RAIN_2_SNOW_1_ALPHA, RAIN_2_SNOW_1_SIZE, x + offset_cloud_x + 6, y + 31, COLORED);
+        *info = &RAIN_2_SNOW_1_INFO[0];
+        *data = &RAIN_2_SNOW_1[0];
+        *alpha = &RAIN_2_SNOW_1_ALPHA[0];
     } else if (icon_type == 18) {
         // 2 rain 2 snow
-        paint->DrawBufferAlpha(RAIN_2_SNOW_2, RAIN_2_SNOW_2_ALPHA, RAIN_2_SNOW_2_SIZE, x + offset_cloud_x + 7, y + 30, COLORED);
+        *info = &RAIN_2_SNOW_2_INFO[0];
+        *data = &RAIN_2_SNOW_2[0];
+        *alpha = &RAIN_2_SNOW_2_ALPHA[0];
     } else if (icon_type == 21) {
         // 3 rain 3 snow
-        paint->DrawBufferAlpha(RAIN_3_SNOW_3, RAIN_3_SNOW_3_ALPHA, RAIN_3_SNOW_3_SIZE, x + offset_cloud_x + 6, y + 31, COLORED);
+        *info = &RAIN_3_SNOW_3_INFO[0];
+        *data = &RAIN_3_SNOW_3[0];
+        *alpha = &RAIN_3_SNOW_3_ALPHA[0];
     }
 }
 
 void Display::renderWeatherForecast(const WeatherForecast *forecasts, int num_forecasts)
 {
-    for (int i = 0; i < num_forecasts; i++) {
+    for (int i = 0; i < num_forecasts - 1; i++) {
         int x = 80 * i;
-        WeatherForecast f = forecasts[i];
+        WeatherForecast f = forecasts[i + 1];
         renderIcon(f.icon, x + 15, 200);
 
         int tempMin = roundf(f.tempMin);
@@ -302,7 +388,7 @@ void Display::render24hIcons(uint8_t *icons, int num_steps)
 
         int hour = start + i * step;
 
-        String text = String(hour % 12) + (hour % 24 >= 12 ? "PM" : "AM");
+        String text = String(hour) + "H";
 
         int x = LABEL_OFFSET + i * part - text.length() * 14 / 2;
 
@@ -314,8 +400,59 @@ void Display::render24hIcons(uint8_t *icons, int num_steps)
 void Display::renderWeather(Weather weather, int current_hour)
 {
     renderWeatherForecast(weather.forecasts, NUM_FORECASTS);
-    renderDailyGraph(weather.temperatures, weather.precipitation, NUM_1H, current_hour);
+    // renderDailyGraph(weather.temperatures, weather.precipitation, NUM_1H, current_hour);
     render24hIcons(weather.icons, NUM_3H);
+
+    paint->DrawHorizontalLine(30, 86, width - 60, COLORED);
+    paint->DrawHorizontalLine(30, 189, width - 60, COLORED);
+    paint->DrawVerticalLine(30, 86, 189 - 86, COLORED);
+    paint->DrawVerticalLine(width - 31, 86, 189 - 86, COLORED);
+
+    WeatherForecast current_forecast = weather.forecasts[0];
+
+    int t_min = roundf(current_forecast.tempMin);
+    int t_max = roundf(current_forecast.tempMax);
+    renderText(50, 131, String(String(t_min) + "|" + String(t_max)).c_str(), ROBOTO, ROBOTO_INFO);
+    
+    // Create temporary icon to copy and scale
+    renderIcon(current_forecast.icon, 290, 96);
+    
+    // copy and scale icon + delete origin
+    int i, j, p;
+    for (j = 0; j < 48; j++) {
+        for(i = 0; i < 50; i++) {
+            p = (96 + j) * 400 + i + 290;
+            if ((buffer[p / 8] & (0x80 >> (p % 8))) == 0) {
+                paint->DrawPixel(150 + i * 2, 89 + j * 2, COLORED);
+                paint->DrawPixel(150 + i * 2 + 1, 89 + j * 2, COLORED);
+                paint->DrawPixel(150 + i * 2, 89 + j * 2 + 1, COLORED);
+                paint->DrawPixel(150 + i * 2 + 1, 89 + j * 2 + 1, COLORED);
+                paint->DrawPixel(290 + i, 96 + j, UNCOLORED);
+            }
+        }
+    }
+
+    if (roundf(current_forecast.precipitation * 10) >= 1) {
+        paint->DrawBuffer(PRECIPITATION, PRECIPITATION_INFO, 270, 129, COLORED);
+        renderText(300, 130, String(current_forecast.precipitation, 1).c_str(), ROBOTO, ROBOTO_INFO);
+    }
+
+    if (current_hour >= 6 || current_hour == 0) {
+        int x = 35.f + 330.f * ((float)current_hour - 6)/ 18;
+        paint->DrawArrowUp(x, 86, 11, COLORED);
+    }
+
+
+}
+
+void Display::renderError(UpdateError error) {
+    if (error == UpdateError::ETime) {
+        paint->DrawBuffer(NOTIME, NOTIME_INFO, width - 31 + 5, 137 - 10, COLORED);
+    } else if (error == UpdateError::EConnection) {
+        paint->DrawBuffer(NOCONNECTION, NOCONNECTION_INFO, width - 31 + 5, 137 - 10, COLORED);
+    } else if (error == UpdateError::EWeather) {
+        paint->DrawBuffer(NOWEATHER, NOWEATHER_INFO, width - 31 + 5, 137 - 10, COLORED);
+    }
 }
 
 void Display::renderTime(time_t t, int x, int y) {
@@ -324,6 +461,44 @@ void Display::renderTime(time_t t, int x, int y) {
     strftime (buffer,6,"%I:%M", info);
 
     paint->DrawStringAt(x, y, buffer, &Font12, COLORED);
+}
+
+void Display::renderText(int x, int y, const char *str, const unsigned char *font, const int *info) {
+    int num_letters = info[0];
+    int width = info[1];
+    int height = info[2];
+    
+    int i, j;
+    for(i = 0; i < strlen(str); i++) {
+        int c = (int)str[i];
+        int found = -1;
+        for(j = 0; j < num_letters; j++) {
+            if (info[j * 4 + 3] == c) {
+                found = j;
+                break;
+            }
+        }
+
+        if (found < 0) continue;
+
+        int s_x = info[3 + found * 4 + 1];
+        int w = info[3 + found * 4 + 2];
+        int spacing = info[3 + found * 4 + 3];
+
+        paint->DrawBufferLimited(font, width, s_x, 0, w, height, x, y, COLORED);
+        x += w + spacing;
+    }
+}
+
+void Display::print()
+{
+    for (int i = 0; i < width * height / 8; i++) {
+        Serial.print((int)buffer[i]);
+        Serial.print(" ");
+        delay(1);
+    }
+    
+    Serial.println("");
 }
 
 void Display::draw()
