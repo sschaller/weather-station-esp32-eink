@@ -40,6 +40,10 @@ class Display {
         void renderTime(time_t t, int x, int y);
         void renderText(int x, int y, const char *str, const unsigned char *font, const int *info);
         void renderError(UpdateError error);
+        void renderLargeIcon(uint8_t icon_type, int x, int y);
+
+        int getTextWidth(const char *str, const unsigned char *font, const int *info);
+        int getLetterForFont(int letter, const unsigned char *font, const int *info);
 
         void print();
         void draw();

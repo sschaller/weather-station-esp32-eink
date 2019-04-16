@@ -8,13 +8,13 @@
 #define COLORED     0
 #define UNCOLORED   1
 
-static char buffer[3+1];
+static char buffer[2+1];
 char* dayShortStr(uint8_t day) {
-   uint8_t index = day*3;
-   for (int i=0; i < 3; i++)      
-      buffer[i] = pgm_read_byte(&(dayShortNames_P[index + i]));  
-   buffer[3] = 0; 
-   return buffer;
+    uint8_t index = day*2;
+    for (int i=0; i < 2; i++)
+        buffer[i] = pgm_read_byte(&(dayShortNames_P[index + i]));  
+    buffer[2] = 0;
+    return buffer;
 }
 
 bool Display::initialize(bool clear_buffer) {
@@ -278,14 +278,21 @@ void Display::renderWeatherForecast(const WeatherForecast *forecasts, int num_fo
         int tempMin = roundf(f.tempMin);
         int tempMax = roundf(f.tempMax);
 
-        String temp = String(tempMin, DEC) + "|" + String(tempMax, DEC);
-        
-        int len = temp.length() * 11;
-        int start = (80 - len) / 2;
-        if(f.tempMin < 0) start -= 3;
+        const char *c_1 = String(tempMin, DEC).c_str();
+        const char *c_2 = "|";
 
-        paint->DrawStringAt(x + start, 252, temp.c_str(), &Font16, COLORED);
-        paint->DrawStringAt(x + 15, 276, dayShortStr(f.weekDay), &Font24, COLORED);
+        Serial.println(tempMin);
+
+        int t_1 = getTextWidth(c_1, CONSOLAS, CONSOLAS_INFO);
+        int t_2 = getTextWidth(c_2, CONSOLAS, CONSOLAS_INFO);
+        // int t_3 = getTextWidth(c_3, CONSOLAS, CONSOLAS_INFO);
+
+        int middle_x = x + 40 - (int)floorf((float) t_2 / 2) - t_1;
+        renderText(middle_x, 252, String(String(tempMin, DEC) + "|" + String(tempMax, DEC)).c_str(), CONSOLAS, CONSOLAS_INFO);
+
+        char *weekday = dayShortStr(f.weekDay);
+        int day_width = getTextWidth(weekday, GOTHIC18, GOTHIC18_INFO);
+        renderText(x + 40 - (int)floorf((float)day_width / 2), 283, weekday, GOTHIC18, GOTHIC18_INFO);
     }
 }
 
@@ -403,55 +410,85 @@ void Display::renderWeather(Weather weather, int current_hour)
     // renderDailyGraph(weather.temperatures, weather.precipitation, NUM_1H, current_hour);
     render24hIcons(weather.icons, NUM_3H);
 
-    paint->DrawHorizontalLine(30, 86, width - 60, COLORED);
-    paint->DrawHorizontalLine(30, 189, width - 60, COLORED);
-    paint->DrawVerticalLine(30, 86, 189 - 86, COLORED);
-    paint->DrawVerticalLine(width - 31, 86, 189 - 86, COLORED);
+    paint->DrawHorizontalLine(0, 86, width, COLORED);
+    paint->DrawHorizontalLine(0, 189, width, COLORED);
+    // paint->DrawVerticalLine(30, 86, 189 - 86, COLORED);
+    // paint->DrawVerticalLine(width - 31, 86, 189 - 86, COLORED);
 
+    String hour_temp(weather.current.temperature, 1);
+
+    int hour_temp_width = getTextWidth(hour_temp.c_str(), ROBOTO48_REGULAR, ROBOTO48_REGULAR_INFO);
+    renderText(120, 115, String(hour_temp + "°").c_str(), ROBOTO48_REGULAR, ROBOTO48_REGULAR_INFO);
+    
+    renderLargeIcon(weather.current.icon, 10, 89);
+
+    time_t current_weather_time = static_cast<time_t>(weather.current.time);
+    struct tm current_weather_tm = *localtime(&current_weather_time);
+
+    String date(String(dayShortStr(current_weather_tm.tm_wday + 1)) + ", " + String(current_weather_tm.tm_mday) + ". " + String(monthNames[current_weather_tm.tm_mon]));
+
+    int date_width = getTextWidth(date.c_str(), GOTHIC18, GOTHIC18_INFO);
+    renderText((int)fminf(width - 5 - date_width, 257), 164, date.c_str(), GOTHIC18, GOTHIC18_INFO);
+
+    String hour(String(current_weather_tm.tm_hour) + ":00");
+    int hour_width = getTextWidth(hour.c_str(), GOTHIC18, GOTHIC18_INFO);
+
+    // center font under hour temperature
+    renderText(120 + (int)roundf((float)hour_temp_width / 2 - (float)hour_width / 2), 164 + 2, hour.c_str(), GOTHIC18, GOTHIC18_INFO);
+
+    // Day Weather
     WeatherForecast current_forecast = weather.forecasts[0];
 
-    int t_min = roundf(current_forecast.tempMin);
-    int t_max = roundf(current_forecast.tempMax);
-    renderText(50, 131, String(String(t_min) + "|" + String(t_max)).c_str(), ROBOTO, ROBOTO_INFO);
-    
-    // Create temporary icon to copy and scale
-    renderIcon(current_forecast.icon, 290, 96);
-    
-    // copy and scale icon + delete origin
-    int i, j, p;
-    for (j = 0; j < 48; j++) {
-        for(i = 0; i < 50; i++) {
-            p = (96 + j) * 400 + i + 290;
-            if ((buffer[p / 8] & (0x80 >> (p % 8))) == 0) {
-                paint->DrawPixel(150 + i * 2, 89 + j * 2, COLORED);
-                paint->DrawPixel(150 + i * 2 + 1, 89 + j * 2, COLORED);
-                paint->DrawPixel(150 + i * 2, 89 + j * 2 + 1, COLORED);
-                paint->DrawPixel(150 + i * 2 + 1, 89 + j * 2 + 1, COLORED);
-                paint->DrawPixel(290 + i, 96 + j, UNCOLORED);
-            }
-        }
-    }
+    renderIcon(current_forecast.icon, 257, 107);
 
+    int day_middle_y = 131;
+
+    // Move up day temp if we have to show precipitation (keep 8px distance around middle)
     if (roundf(current_forecast.precipitation * 10) >= 1) {
-        paint->DrawBuffer(PRECIPITATION, PRECIPITATION_INFO, 270, 129, COLORED);
-        renderText(300, 130, String(current_forecast.precipitation, 1).c_str(), ROBOTO, ROBOTO_INFO);
+        paint->DrawBuffer(PRECIPITATION, PRECIPITATION_INFO, 322, 140, COLORED);
+        renderText(341, 136, String(String(current_forecast.precipitation, 1) + "mm").c_str(), CONSOLAS, CONSOLAS_INFO);
+        day_middle_y -= 10;
     }
+    int day_temp_max = ceilf(current_forecast.tempMax);
+    int day_temp_min = roundf(current_forecast.tempMin);
+
+    renderText(329, day_middle_y - 9, String(String(day_temp_min) + "|" + String(day_temp_max)).c_str(), CONSOLAS, CONSOLAS_INFO);
 
     if (current_hour >= 6 || current_hour == 0) {
         int x = 35.f + 330.f * ((float)current_hour - 6)/ 18;
         paint->DrawArrowUp(x, 86, 11, COLORED);
     }
+}
 
+void Display::renderLargeIcon(uint8_t icon_type, int x, int y) {
+    int temp_x = 290, temp_y = 96;
 
+    // Create temporary icon to copy and scale
+    renderIcon(icon_type, temp_x, temp_y);
+    
+    // copy and scale icon + delete origin
+    int i, j, p;
+    for (j = 0; j < 48; j++) { // icon height
+        for(i = 0; i < 50; i++) { // icon width
+            p = (temp_y + j) * width + i + temp_x;
+            if ((buffer[p / 8] & (0x80 >> (p % 8))) == 0) {
+                paint->DrawPixel(x + i * 2, y + j * 2, COLORED);
+                paint->DrawPixel(x + i * 2 + 1, y + j * 2, COLORED);
+                paint->DrawPixel(x + i * 2, y + j * 2 + 1, COLORED);
+                paint->DrawPixel(x + i * 2 + 1, y + j * 2 + 1, COLORED);
+                paint->DrawPixel(temp_x + i, temp_y + j, UNCOLORED);
+            }
+        }
+    }
 }
 
 void Display::renderError(UpdateError error) {
     if (error == UpdateError::ETime) {
-        paint->DrawBuffer(NOTIME, NOTIME_INFO, width - 31 + 5, 137 - 10, COLORED);
+        paint->DrawBuffer(NOTIME, NOTIME_INFO, 5, 137 - 10, COLORED);
     } else if (error == UpdateError::EConnection) {
-        paint->DrawBuffer(NOCONNECTION, NOCONNECTION_INFO, width - 31 + 5, 137 - 10, COLORED);
+        paint->DrawBuffer(NOCONNECTION, NOCONNECTION_INFO, 5, 137 - 10, COLORED);
     } else if (error == UpdateError::EWeather) {
-        paint->DrawBuffer(NOWEATHER, NOWEATHER_INFO, width - 31 + 5, 137 - 10, COLORED);
+        paint->DrawBuffer(NOWEATHER, NOWEATHER_INFO, 5, 137 - 10, COLORED);
     }
 }
 
@@ -464,21 +501,10 @@ void Display::renderTime(time_t t, int x, int y) {
 }
 
 void Display::renderText(int x, int y, const char *str, const unsigned char *font, const int *info) {
-    int num_letters = info[0];
-    int width = info[1];
-    int height = info[2];
+    int width = info[1], height = info[2];
     
-    int i, j;
-    for(i = 0; i < strlen(str); i++) {
-        int c = (int)str[i];
-        int found = -1;
-        for(j = 0; j < num_letters; j++) {
-            if (info[j * 4 + 3] == c) {
-                found = j;
-                break;
-            }
-        }
-
+    for(int i = 0; i < strlen(str); i++) {
+        int found = getLetterForFont((int)str[i], font, info);
         if (found < 0) continue;
 
         int s_x = info[3 + found * 4 + 1];
@@ -488,6 +514,29 @@ void Display::renderText(int x, int y, const char *str, const unsigned char *fon
         paint->DrawBufferLimited(font, width, s_x, 0, w, height, x, y, COLORED);
         x += w + spacing;
     }
+}
+
+int Display::getTextWidth(const char *str, const unsigned char *font, const int *info) {
+    int x = 0;
+    for(int i = 0; i < strlen(str); i++) {
+        int found = getLetterForFont((int)str[i], font, info);
+        if (found < 0) continue;
+
+        int w = info[3 + found * 4 + 2];
+        int spacing = info[3 + found * 4 + 3];
+
+        x += w + spacing;
+    }
+    return x;
+}
+
+int Display::getLetterForFont(int letter, const unsigned char *font, const int *info) {
+    for(int j = 0; j < info[0]; j++) {
+        if (info[j * 4 + 3] == letter) {
+            return j;
+        }
+    }
+    return -1;
 }
 
 void Display::print()

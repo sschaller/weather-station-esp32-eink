@@ -5,7 +5,14 @@
 
 namespace WeatherAPI {
   bool parseWeather(DynamicJsonDocument &doc, Weather *weather) {
-  
+
+    // Current Weather
+    unsigned long long current_weather_time = doc["currentWeather"]["time"].as<unsigned long long>();
+    weather->current.time = static_cast<uint32_t>(current_weather_time / 1000);
+    weather->current.icon = doc["currentWeather"]["icon"].as<unsigned char>();
+    weather->current.temperature = doc["currentWeather"]["temperature"].as<float>();
+
+    // Graph
     unsigned long long start_s = doc["graph"]["start"].as<unsigned long long>();
 
     time_t current_time = time(NULL);

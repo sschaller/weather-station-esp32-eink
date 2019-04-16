@@ -22,11 +22,18 @@ struct WeatherForecast {
     float precipitation;
 };
 
+struct CurrentWeather {
+    uint32_t time;
+    uint8_t icon;
+    float temperature;
+};
+
 struct Weather {
     uint32_t last_update;
     uint8_t icons[NUM_3H];
     float precipitation[NUM_1H];
     float temperatures[NUM_1H];
+    CurrentWeather current;
     WeatherForecast forecasts[NUM_FORECASTS];
 };
 

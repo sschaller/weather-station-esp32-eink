@@ -52,15 +52,19 @@ bool WebRequest::requestWeather() {
   client.println(headers);
   client.println();
 
+  Serial.println("Sent request!");
+
   while (client.connected()) {
     String line = client.readStringUntil('\n');
+    Serial.println(line);
     if (line == "\r") {
       Serial.println("headers received");
-      break;
+      return true;
     }
   }
   
-  return true;
+  Serial.println("Timeout - No headers");
+  return false;
 }
 
 void WebRequest::disconnect() {
