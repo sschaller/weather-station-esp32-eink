@@ -1,7 +1,8 @@
 #include "webrequest.h"
 #include "wifi_login.h"
 
-#define NUM_TRIES 20
+#define NUM_TRIES 4
+#define WAIT_TIME 5
 
 bool WebRequest::connect() {
 
@@ -12,27 +13,26 @@ bool WebRequest::connect() {
   Serial.print("Attempting to connect to SSID: ");
   Serial.println(ssid);
   
-  WiFi.begin(ssid, password);
-
-  int num_tries = 0;
-  while(WiFi.status() != WL_CONNECTED) {
-    if (num_tries >= NUM_TRIES) {
-      Serial.println("Could not connect to WiFi");
-      return false;
-    }
-    num_tries++;
+  for(int num_tries = 0; num_tries < NUM_TRIES * WAIT_TIME; num_tries++) {
     
+    if (num_tries % WAIT_TIME == 0) {
+      WiFi.begin(ssid, password);
+    }
+
     Serial.print(".");
-    // wait 1 second for re-trying
     delay(1000);
+
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.print("Connected to ");
+      Serial.println(ssid);
+
+      connected = true;
+      return true;
+    }
   }
-
-  Serial.print("Connected to ");
-  Serial.println(ssid);
-
-  connected = true;
   
-  return true;
+  Serial.println("Could not connect to WiFi");
+  return false;
 }
 
 bool WebRequest::requestWeather() {
@@ -56,7 +56,7 @@ bool WebRequest::requestWeather() {
 
   while (client.connected()) {
     String line = client.readStringUntil('\n');
-    Serial.println(line);
+    // Serial.println(line);
     if (line == "\r") {
       Serial.println("headers received");
       return true;

@@ -39,6 +39,10 @@ bool Display::initialize(bool clear_buffer) {
     paint = new Paint(buffer, width, height);
     paint->Clear(UNCOLORED);
 
+    icon_buffer = new unsigned char[56 * 48 / 8];
+    paint_icon = new Paint(icon_buffer, 56, 48);
+    paint_icon->Clear(UNCOLORED);
+
     initialized = true;
 
     return true;
@@ -81,11 +85,16 @@ void Display::calculateResolution(float &y_lower, float &y_upper, float &step) {
     }
 }
 
-void Display::renderIcon(uint8_t icon_type, int x, int y)
+void Display::renderIcon(uint8_t icon_type, int x, int y, bool scale_2 = false)
 {
-    // Drawing area will be overwritten in places of icons (no need to clear)
+    paint_icon->Clear(UNCOLORED);
 
-    int x_lowest = 50, x_highest = 0, y_lowest = 48, y_highest = 0;
+    // paint_icon->DrawVerticalLine(0, 0, 48, COLORED);
+    // paint_icon->DrawVerticalLine(49, 0, 48, COLORED);
+    // paint_icon->DrawHorizontalLine(0, 0, 50, COLORED);
+    // paint_icon->DrawHorizontalLine(0, 47, 50, COLORED);
+
+    // Drawing area will be overwritten in places of icons (no need to clear)
 
     const unsigned char *basic = nullptr;
     const int *basic_info = nullptr;
@@ -96,54 +105,61 @@ void Display::renderIcon(uint8_t icon_type, int x, int y)
     const int *precipitation_info = nullptr;
     getPrecipitation(icon_type, &precipitation_info, &precipitation, &precipitation_alpha);
 
-    if (basic_info != nullptr) {
-        if (basic_info[2] < x_lowest) x_lowest = basic_info[2];
-        if (basic_info[3] < y_lowest) y_lowest = basic_info[3];
-        if (basic_info[2] + basic_info[0] > x_highest) x_highest = basic_info[2] + basic_info[0];
-        if (basic_info[3] + basic_info[1] > y_highest) y_highest = basic_info[3] + basic_info[1];
-    }
-
-    if (precipitation_info != nullptr) {
-        if (precipitation_info[2] < x_lowest) x_lowest = basic_info[2];
-        if (precipitation_info[3] < y_lowest) y_lowest = basic_info[3];
-        if (precipitation_info[2] + precipitation_info[0] > x_highest) x_highest = precipitation_info[2] + precipitation_info[0];
-        if (precipitation_info[3] + precipitation_info[1] > y_highest) y_highest = precipitation_info[3] + precipitation_info[1];
-    }
-
-    int offset_x = (int)ceilf((50.f - (x_highest - x_lowest)) / 2) - x_lowest;
-    int offset_y = (int)ceilf((48.f - (y_highest - y_lowest)) / 2) - y_lowest;
-
-    x += offset_x;
-    y += offset_y;
-
     icon_type = icon_type % 100;
     bool is_dark_cloud = ((icon_type >= 4 && icon_type <= 11) || (icon_type >= 13 && icon_type <= 25) || icon_type == 33 || icon_type == 34);
     if (is_dark_cloud) {
         // draw background pattern for cloud first - align cloud bottom right
-        paint->DrawBuffer(CLOUD_DARK, CLOUD_DARK_INFO, x + basic_info[2] + basic_info[0] - CLOUD_DARK_INFO[0], y + basic_info[3] + basic_info[1] - CLOUD_DARK_INFO[1], COLORED);
+        paint_icon->DrawBuffer(CLOUD_DARK, CLOUD_DARK_INFO, basic_info[2] + basic_info[0] - CLOUD_DARK_INFO[0], basic_info[3] + basic_info[1] - CLOUD_DARK_INFO[1], COLORED);
     }
 
     // Draw template according to type
     if (basic_info != nullptr && basic != nullptr) {
-        paint->DrawBuffer(basic, basic_info, x, y, COLORED);
+        paint_icon->DrawBuffer(basic, basic_info, 0, 0, COLORED);
     }
 
     if (precipitation_info != nullptr && precipitation != nullptr && precipitation_alpha != nullptr) {
         // align cloud bottom right
-        paint->DrawBufferAlpha(precipitation, precipitation_alpha, precipitation_info, x + basic_info[2] + basic_info[0] - CLOUD_DARK_INFO[0], y, COLORED);
+        paint_icon->DrawBufferAlpha(precipitation, precipitation_alpha, precipitation_info, basic_info[2] + basic_info[0] - CLOUD_DARK_INFO[0], 0, COLORED);
     }
 
     // special types - no impact on height so leave out for calculation
     if (icon_type == 26) {
         // draw high fog, no transparency
-        paint->DrawBufferOpaque(FOG_TOP, FOG_TOP_INFO, x, y, COLORED);
+        paint_icon->DrawBufferOpaque(FOG_TOP, FOG_TOP_INFO, 0, 0, COLORED);
     } else if (icon_type == 27) {
         // draw low fog, no transparency
-        paint->DrawBufferOpaque(FOG_BOTTOM, FOG_BOTTOM_INFO, x, y, COLORED);
+        paint_icon->DrawBufferOpaque(FOG_BOTTOM, FOG_BOTTOM_INFO, 0, 0, COLORED);
     } else if (icon_type == 28) {
         // fog - draw both
-        paint->DrawBuffer(FOG_TOP, FOG_TOP_INFO, x, y, COLORED);
-        paint->DrawBuffer(FOG_BOTTOM, FOG_BOTTOM_INFO, x, y, COLORED);
+        paint_icon->DrawBuffer(FOG_TOP, FOG_TOP_INFO, 0, 0, COLORED);
+        paint_icon->DrawBuffer(FOG_BOTTOM, FOG_BOTTOM_INFO, 0, 0, COLORED);
+    }
+
+    static unsigned char zero[7] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
+    int top_y = 0, bottom_y = 0;
+    while(top_y < 48) {
+
+        if (memcmp(zero, icon_buffer + top_y * 7 * sizeof(char), 7) != 0) {
+            break;
+        }
+        top_y++;
+    }
+    while(bottom_y < 48) {
+        if (memcmp(zero, icon_buffer + (47-bottom_y) * 7 * sizeof(char), 7) != 0) {
+            break;
+        }
+        bottom_y++;
+    }
+
+    int offset_y = (bottom_y - top_y) / 2;
+
+    int info[] = {56,48,0,0};
+
+    if (scale_2) {
+        paint->DrawBufferDouble(icon_buffer, info, x, y + offset_y, COLORED);
+    } else {
+        paint->DrawBuffer(icon_buffer, info, x, y + offset_y, COLORED);
     }
 }
 
@@ -273,7 +289,7 @@ void Display::renderWeatherForecast(const WeatherForecast *forecasts, int num_fo
     for (int i = 0; i < num_forecasts - 1; i++) {
         int x = 80 * i;
         WeatherForecast f = forecasts[i + 1];
-        renderIcon(f.icon, x + 15, 200);
+        renderIcon(f.icon, x + 15, 206);
 
         int tempMin = roundf(f.tempMin);
         int tempMax = roundf(f.tempMax);
@@ -281,204 +297,149 @@ void Display::renderWeatherForecast(const WeatherForecast *forecasts, int num_fo
         const char *c_1 = String(tempMin, DEC).c_str();
         const char *c_2 = "|";
 
-        Serial.println(tempMin);
-
         int t_1 = getTextWidth(c_1, CONSOLAS, CONSOLAS_INFO);
         int t_2 = getTextWidth(c_2, CONSOLAS, CONSOLAS_INFO);
-        // int t_3 = getTextWidth(c_3, CONSOLAS, CONSOLAS_INFO);
 
         int middle_x = x + 40 - (int)floorf((float) t_2 / 2) - t_1;
-        renderText(middle_x, 252, String(String(tempMin, DEC) + "|" + String(tempMax, DEC)).c_str(), CONSOLAS, CONSOLAS_INFO);
+        renderText(middle_x, 262, String(String(tempMin, DEC) + "|" + String(tempMax, DEC)).c_str(), CONSOLAS, CONSOLAS_INFO);
 
         char *weekday = dayShortStr(f.weekDay);
         int day_width = getTextWidth(weekday, GOTHIC18, GOTHIC18_INFO);
-        renderText(x + 40 - (int)floorf((float)day_width / 2), 283, weekday, GOTHIC18, GOTHIC18_INFO);
+        renderText(x + 40 - (int)floorf((float)day_width / 2), 288, weekday, GOTHIC18, GOTHIC18_INFO);
     }
 }
 
-void Display::renderTemperatureCurve(float *temperatures, int num_entries) {
-    
-    float y_min = 100.f;
-    float y_max = -100.f;
-    for (int i = 0; i < num_entries; i++) {
-        if(temperatures[i] < y_min) y_min = temperatures[i];
-        if(temperatures[i] > y_max) y_max = temperatures[i];
+void Display::renderPrecipitation(const Weather &weather, int start_hour, int offset_hour) {
+    int hour, i_part = 0;
+    float y_max = 1.f;
+
+    // offset hour only plays a role if > 3 (last update older than 3 hours. should not happen)
+    // in this case we just move everything forward 3h
+    offset_hour = offset_hour / 3;
+
+    int offset = 11;
+
+    // precipitation 1h starts in the future at start_low. go forward skipping period (0 - 6AM)
+    int offset_low_h = (weather.start_low - weather.start) / 3600;
+
+    // 10MIN section
+    int bar_width = 3;
+
+    for (int i = offset_hour * 3; i < offset_low_h * 6 && i_part < (width - 2*offset); i++) {
+
+        hour = start_hour + i / 6;
+        hour = hour % 24;
+        if (hour < HOUR_START) continue;
+
+        if (weather.precipitation10min[i] > 0) {
+            int x = offset + i_part;
+            int y0 = 20.f * fminf(weather.precipitation10min[i] / y_max, y_max);
+            paint->DrawFilledRectangle(x, 72 - y0, x + bar_width - 2, 72, COLORED);
+        }
+
+        i_part += bar_width;
     }
 
-    float step;
-    calculateResolution(y_min, y_max, step);
-    
-    float range = y_max - y_min;
+    // 1H section
+    bar_width = 3 * 6;
 
-    for (int i = 0; i <= NUM_LINES; i++) {
-        int y = Y_CURVES + (NUM_LINES - i) * 80.f / NUM_LINES;
+    for (int i = offset_hour * 3; i < NUM_1H && i_part < (width - 2*offset); i++)
+    {
+        hour = (start_hour + offset_low_h + i) % 24;
+        if (hour < HOUR_START) continue;
 
-        int y_text = static_cast<int>(i * step + y_min);
-        String text = String(y_text);
-        paint->DrawStringAt(LABEL_OFFSET - 4 - text.length() * 11, y - 6, text.c_str(), &Font16, COLORED);
+        if (weather.precipitation1h[i] > 0) {
+            int x = offset + i_part;
+            int y0 = 20.f * fminf(weather.precipitation1h[i] / y_max, y_max);
+            paint->DrawFilledRectangle(x, 72 - y0, x + bar_width - 2, 72, COLORED);
+        }
+
+        i_part += bar_width;
     }
 
-    int limit_x = width - LABEL_OFFSET - 25;
-    float step_size = static_cast<float>(limit_x) / (num_entries - 1);
     
-    for (int i = 1; i < num_entries; i++) {
-        int x1 = LABEL_OFFSET + (i - 1) * step_size;
-        int x2 = LABEL_OFFSET + i * step_size;
-
-        int y1 = 80.f * (y_max - temperatures[i - 1]) / range;
-        int y2 = 80.f * (y_max - temperatures[i]) / range;
-
-        paint->DrawLine(x1, Y_CURVES + y1, x2, Y_CURVES + y2, COLORED);
-        paint->DrawLine(x1, Y_CURVES + y1 - 1, x2, Y_CURVES + y2 - 1, COLORED);
-    }
 }
 
-void Display::renderPrecipitation(float *precipitation, int num_points) {
-    float y_max = -100.f;
-    for(int i = 0; i < num_points; i++) {
-        if(precipitation[i] > y_max) y_max = precipitation[i];
-    }
-
-    float step = fmax(1.f, ceilf(y_max / NUM_LINES));
-    
-    float y_upper = step * NUM_LINES;
-    float y_lower = 0.f;
-
-    float range = y_upper - y_lower;
-
-    float limit_x = width - LABEL_OFFSET - 25;
-    int bar_x = (limit_x - (num_points-1) * 2) / num_points;
-
-    for(int i = 0; i < num_points; i++) {
-        if (precipitation[i] == 0) continue;
-
-        int x = i * (bar_x + 2);
-        int y0 = 80.f * (y_upper - precipitation[i]) / range;
-        int y1 = 80;
-        
-        paint->DrawFilledRectangle(LABEL_OFFSET + x, Y_CURVES + y0, LABEL_OFFSET + x + bar_x, Y_CURVES + y1, COLORED);
-    }
-
-    for(int i = 0; i <= NUM_LINES; i++) {
-        int y = Y_CURVES + (NUM_LINES - i) * 80.f / NUM_LINES;
-
-        int y_text = static_cast<int>(i * step + y_lower);
-        String text = String(y_text);
-        paint->DrawStringAt(width - 25 + 4, y - 6, text.c_str(), &Font16, COLORED);
-    }
-}
-
-void Display::renderDailyGraph(float *temperatures, float *precipitation, int num_points, int current_hour) {
-    for (int i = 0; i <= NUM_LINES; i++) {
-        int y = Y_CURVES + (NUM_LINES - i) * 80.f / NUM_LINES;
-        paint->DrawHorizontalLine(LABEL_OFFSET, y, width - LABEL_OFFSET - 25, COLORED);
-    }
-    renderTemperatureCurve(temperatures, num_points);
-    renderPrecipitation(precipitation, num_points);
-
-    if (current_hour >= HOUR_START) {
-        float limit_x = width - LABEL_OFFSET - 25;
-        float step_size = limit_x / (num_points - 1);
-        paint->DrawVerticalLine(LABEL_OFFSET + (current_hour - HOUR_START) * step_size, Y_CURVES - 20, 80 + 20, COLORED);
-        paint->DrawVerticalLine(LABEL_OFFSET + (current_hour - HOUR_START) * step_size + 1, Y_CURVES - 20, 80 + 20, COLORED);
-    }
-}
-
-void Display::render24hIcons(uint8_t *icons, int num_steps)
+void Display::render24hIcons(const Weather &weather, int num_steps, int start_hour, int offset_hour)
 {
-    int start = 6;
-    int step = 3;
+    int start_i = offset_hour / 3;
 
-    int part = (width - LABEL_OFFSET - 25) / (num_steps - 1);
+    int part = 54;
+    int offset = (width - 7 * part) / 2;
 
-    for (int i = 0; i < num_steps; i++) {
+    for (int i = 0, i_part = 0; i < num_steps - start_i && i_part < 7; i++) {
 
-        int hour = start + i * step;
+        int hour = start_hour + i * 3;
+        if (hour % 24 < HOUR_START) continue;
 
-        String text = String(hour) + "H";
+        String text = String(hour % 24) + "**";
 
-        int x = LABEL_OFFSET + i * part - text.length() * 14 / 2;
+        int x = offset + i_part * part;
+        Display::renderText(x + 3, 78, text.c_str(), GOTHIC18, GOTHIC18_INFO);
+        paint->DrawVerticalLine(x, 73, 4, COLORED);
 
-        renderIcon(icons[i], LABEL_OFFSET + i * part - 25, 28);
-        paint->DrawStringAt(x, 4, text.c_str(), &Font20, COLORED);
+        renderIcon(weather.icons[start_i + i], offset + i_part * part + part / 2 - 25, 2);
+        i_part++;
     }
+
+    renderPrecipitation(weather, start_hour, offset_hour);
 }
 
-void Display::renderWeather(Weather weather, int current_hour)
+void Display::renderTodayOverview(const WeatherForecast &forecast, time_t start)
 {
-    renderWeatherForecast(weather.forecasts, NUM_FORECASTS);
-    // renderDailyGraph(weather.temperatures, weather.precipitation, NUM_1H, current_hour);
-    render24hIcons(weather.icons, NUM_3H);
+    struct tm start_tm = *localtime(&start);
+    String date(String(dayShortStr(start_tm.tm_wday + 1)) + ", " + String(start_tm.tm_mday) + ". " + String(monthNames[start_tm.tm_mon]));
+    int date_width = getTextWidth(date.c_str(), GOTHIC18, GOTHIC18_INFO);
+    renderText((int)fminf(width - 5 - date_width, 257), 180, date.c_str(), GOTHIC18, GOTHIC18_INFO);
 
-    paint->DrawHorizontalLine(0, 86, width, COLORED);
-    paint->DrawHorizontalLine(0, 189, width, COLORED);
-    // paint->DrawVerticalLine(30, 86, 189 - 86, COLORED);
-    // paint->DrawVerticalLine(width - 31, 86, 189 - 86, COLORED);
+    renderIcon(forecast.icon, 257, 120);
 
-    String hour_temp(weather.current.temperature, 1);
+    int day_middle_y = 136;
+
+    // Move up day temp if we have to show precipitation (keep 8px distance around middle)
+    if (roundf(forecast.precipitation * 10) >= 1) {
+        paint->DrawBuffer(PRECIPITATION, PRECIPITATION_INFO, 312, 151, COLORED);
+        renderText(329, 148, String(String(forecast.precipitation, 1) + "mm").c_str(), CONSOLAS, CONSOLAS_INFO);
+        day_middle_y -= 13;
+    }
+    int day_temp_max = ceilf(forecast.tempMax);
+    int day_temp_min = roundf(forecast.tempMin);
+
+    renderText(329, day_middle_y, String(String(day_temp_min) + "|" + String(day_temp_max)).c_str(), CONSOLAS, CONSOLAS_INFO);
+}
+
+void Display::renderCurrentWeather(const Weather &weather, int current_hour, int offset_hour)
+{
+    int offset_3h = offset_hour / 3;
+    float current_temperature = weather.temperatures[offset_hour];
+    uint8_t current_icon = weather.icons[offset_3h];
+
+    String hour_temp(current_temperature, 1);
 
     int hour_temp_width = getTextWidth(hour_temp.c_str(), ROBOTO48_REGULAR, ROBOTO48_REGULAR_INFO);
-    renderText(120, 115, String(hour_temp + "°").c_str(), ROBOTO48_REGULAR, ROBOTO48_REGULAR_INFO);
+    renderText(120, 128, String(hour_temp + "°").c_str(), ROBOTO48_REGULAR, ROBOTO48_REGULAR_INFO);
     
-    renderLargeIcon(weather.current.icon, 10, 89);
+    renderIcon(current_icon, 10, 100, true);
 
-    time_t current_weather_time = static_cast<time_t>(weather.current.time);
-    struct tm current_weather_tm = *localtime(&current_weather_time);
-
-    String date(String(dayShortStr(current_weather_tm.tm_wday + 1)) + ", " + String(current_weather_tm.tm_mday) + ". " + String(monthNames[current_weather_tm.tm_mon]));
-
-    int date_width = getTextWidth(date.c_str(), GOTHIC18, GOTHIC18_INFO);
-    renderText((int)fminf(width - 5 - date_width, 257), 164, date.c_str(), GOTHIC18, GOTHIC18_INFO);
-
-    String hour(String(current_weather_tm.tm_hour) + ":00");
+    String hour(String(current_hour) + ":00");
     int hour_width = getTextWidth(hour.c_str(), GOTHIC18, GOTHIC18_INFO);
 
     // center font under hour temperature
-    renderText(120 + (int)roundf((float)hour_temp_width / 2 - (float)hour_width / 2), 164 + 2, hour.c_str(), GOTHIC18, GOTHIC18_INFO);
-
-    // Day Weather
-    WeatherForecast current_forecast = weather.forecasts[0];
-
-    renderIcon(current_forecast.icon, 257, 107);
-
-    int day_middle_y = 131;
-
-    // Move up day temp if we have to show precipitation (keep 8px distance around middle)
-    if (roundf(current_forecast.precipitation * 10) >= 1) {
-        paint->DrawBuffer(PRECIPITATION, PRECIPITATION_INFO, 322, 140, COLORED);
-        renderText(341, 136, String(String(current_forecast.precipitation, 1) + "mm").c_str(), CONSOLAS, CONSOLAS_INFO);
-        day_middle_y -= 10;
-    }
-    int day_temp_max = ceilf(current_forecast.tempMax);
-    int day_temp_min = roundf(current_forecast.tempMin);
-
-    renderText(329, day_middle_y - 9, String(String(day_temp_min) + "|" + String(day_temp_max)).c_str(), CONSOLAS, CONSOLAS_INFO);
-
-    if (current_hour >= 6 || current_hour == 0) {
-        int x = 35.f + 330.f * ((float)current_hour - 6)/ 18;
-        paint->DrawArrowUp(x, 86, 11, COLORED);
-    }
+    renderText(120 + (int)roundf((float)hour_temp_width / 2 - (float)hour_width / 2), 180, hour.c_str(), GOTHIC18, GOTHIC18_INFO);
 }
 
-void Display::renderLargeIcon(uint8_t icon_type, int x, int y) {
-    int temp_x = 290, temp_y = 96;
+void Display::renderWeather(Weather weather, int current_hour, int offset_hour)
+{
+    paint->DrawHorizontalLine(0, 72, width, COLORED);
+    paint->DrawHorizontalLine(0, 200, width, COLORED);
 
-    // Create temporary icon to copy and scale
-    renderIcon(icon_type, temp_x, temp_y);
-    
-    // copy and scale icon + delete origin
-    int i, j, p;
-    for (j = 0; j < 48; j++) { // icon height
-        for(i = 0; i < 50; i++) { // icon width
-            p = (temp_y + j) * width + i + temp_x;
-            if ((buffer[p / 8] & (0x80 >> (p % 8))) == 0) {
-                paint->DrawPixel(x + i * 2, y + j * 2, COLORED);
-                paint->DrawPixel(x + i * 2 + 1, y + j * 2, COLORED);
-                paint->DrawPixel(x + i * 2, y + j * 2 + 1, COLORED);
-                paint->DrawPixel(x + i * 2 + 1, y + j * 2 + 1, COLORED);
-                paint->DrawPixel(temp_x + i, temp_y + j, UNCOLORED);
-            }
-        }
+    render24hIcons(weather, NUM_3H, current_hour - current_hour % 3, offset_hour);
+    renderCurrentWeather(weather, current_hour, offset_hour);
+    renderTodayOverview(weather.forecasts[0], weather.start);
+    renderWeatherForecast(weather.forecasts, NUM_FORECASTS);
+
+    if (offset_hour > 0) {
+        paint->InvertRectangle(0, 72, 11 + offset_hour * 18, 93, COLORED);
     }
 }
 
@@ -490,14 +451,6 @@ void Display::renderError(UpdateError error) {
     } else if (error == UpdateError::EWeather) {
         paint->DrawBuffer(NOWEATHER, NOWEATHER_INFO, 5, 137 - 10, COLORED);
     }
-}
-
-void Display::renderTime(time_t t, int x, int y) {
-    struct tm *info = localtime (&t);
-    char buffer[6];
-    strftime (buffer,6,"%I:%M", info);
-
-    paint->DrawStringAt(x, y, buffer, &Font12, COLORED);
 }
 
 void Display::renderText(int x, int y, const char *str, const unsigned char *font, const int *info) {

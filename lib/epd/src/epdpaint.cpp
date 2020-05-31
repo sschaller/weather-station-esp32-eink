@@ -25,6 +25,7 @@
  */
 
 #include <stdlib.h>
+#include <math.h>
 #include <pgmspace.h>
 #include "epdpaint.h"
 
@@ -81,6 +82,21 @@ void Paint::DrawAbsolutePixel(int x, int y, int colored) {
         } else {
             image[(x + y * this->width) / 8] |= 0x80 >> (x % 8);
         }
+    }
+}
+
+bool Paint::CheckPixel(int x, int y, int colored) {
+    // currently colored = 1 if blank / 0 if black
+    // IF_INVERT_COLOR is 1 for this
+
+    if (x < 0 || y < 0 || x >= width || y >= height)
+        return false;
+
+    // so if equal then check for blank
+    if (colored == IF_INVERT_COLOR) {
+        return (image[(x + y * this->width) / 8] & (0x80 >> (x % 8))) != 0;
+    } else {
+        return (image[(x + y * this->width) / 8] & (0x80 >> (x % 8))) == 0;
     }
 }
 
@@ -259,7 +275,51 @@ void Paint::DrawFilledRectangle(int x0, int y0, int x1, int y1, int colored) {
     max_y = y1 > y0 ? y1 : y0;
     
     for (i = min_x; i <= max_x; i++) {
-      DrawVerticalLine(i, min_y, max_y - min_y + 1, colored);
+      DrawVerticalLine(i, min_y, max_y - min_y, colored);
+    }
+}
+
+void Paint::InvertRectangle(int x0, int y0, int x1, int y1, int colored) {
+    int min_x, min_y, max_x, max_y;
+    min_x = x1 > x0 ? x0 : x1;
+    max_x = x1 > x0 ? x1 : x0;
+    min_y = y1 > y0 ? y0 : y1;
+    max_y = y1 > y0 ? y1 : y0;
+
+    // int x_1 = min_x + (8 - min_x % 8);
+    // int x_2 = max_x - max_x % 8;
+
+    for (int y = min_y; y <= max_y; y++) {
+        // invert each bit
+        for (int x = min_x; x < max_x; x++) {
+            if (CheckPixel(x, y, 1)) {
+                DrawAbsolutePixel(x, y, 0);
+            } else {
+                DrawAbsolutePixel(x, y, 1);
+            }
+        }
+    }
+}
+
+void Paint::DrawDitherRectangle(int x0, int y0, int x1, int y1, int colored) {
+    int min_x, min_y, max_x, max_y;
+    min_x = x1 > x0 ? x0 : x1;
+    max_x = x1 > x0 ? x1 : x0;
+    min_y = y1 > y0 ? y0 : y1;
+    max_y = y1 > y0 ? y1 : y0;
+
+    for (int y = min_y; y <= max_y; y++) {
+        // invert each bit
+        for (int x = min_x; x < max_x; x++) {
+            if ((x - min_x + y - min_y) % 2 == 0) {
+                // check if any surrounding pixel is colored already - skip
+                if (CheckPixel(x+1, y, colored)) continue;
+                if (CheckPixel(x, y+1, colored)) continue;
+                if (CheckPixel(x-1, y, colored)) continue;
+                if (CheckPixel(x, y-1, colored)) continue;
+                DrawAbsolutePixel(x, y, colored);
+            }
+        }
     }
 }
 
@@ -330,6 +390,21 @@ void Paint::DrawBuffer(const unsigned char *ptr, const int *info, int x, int y, 
             p = j * width + i;
             if ((ptr[p / 8] & (0x80 >> (p % 8))) == 0) {
                 DrawPixel(offset_x + x + i, offset_y + y + j, colored);
+            }
+        }
+    }
+}
+
+void Paint::DrawBufferDouble(const unsigned char *ptr, const int *info, int x, int y, int colored) {
+    int width = info[0], height = info[1], offset_x = info[2], offset_y = info[3];
+    
+    int i, j, p;
+    for (j = 0; j < height; j++) {
+        for (i = 0; i < width; i++) {
+            p = j * width + i;
+            if ((ptr[p / 8] & (0x80 >> (p % 8))) == 0) {
+                DrawVerticalLine(offset_x + x + i*2, offset_y + y + j*2, 2, colored);
+                DrawVerticalLine(offset_x + x + i*2 + 1, offset_y + y + j*2, 2, colored);
             }
         }
     }

@@ -11,7 +11,7 @@
 RTC_DATA_ATTR Weather weather_save = {0};
 RTC_DATA_ATTR char tz[33] = {0};
 
-bool requestWeather(WebRequest &web, Weather *weather) {
+bool requestWeather(WebRequest &web, Weather *weather, time_t current_time) {
   DynamicJsonDocument doc(JSON_CAPACITY);
   
 #if USE_WEATHER_API
@@ -23,6 +23,10 @@ bool requestWeather(WebRequest &web, Weather *weather) {
   DeserializationError error = deserializeJson(doc, web.client);
 #else
   DeserializationError error = deserializeJson(doc, json);
+  
+  // Set local time so old data will be used
+  time_t prev_time = current_time;
+  current_time = static_cast<time_t>(doc["currentWeather"]["time"].as<unsigned long long>() / 1000);
 #endif
 
   if (error) {
@@ -33,10 +37,25 @@ bool requestWeather(WebRequest &web, Weather *weather) {
 
   // serializeJson(doc, Serial);
 
-  return WeatherAPI::parseWeather(doc, weather);
+  bool success2 = WeatherAPI::parseWeather(doc, weather, current_time);
+  
+  #if !USE_WEATHER_API
+  // Set start times to rounded current time to make up for old data set
+  struct tm rounded = *localtime(&prev_time);
+  rounded.tm_sec = 0;
+  rounded.tm_min = 0;
+  rounded.tm_hour -= rounded.tm_hour % 3; // round down to three hours
+  time_t rounded_time = mktime(&rounded);
+
+  weather->start = rounded_time;
+  weather->start_low = rounded_time;
+  weather->current.time = rounded_time;
+  #endif
+
+  return success2;
 }
 
-bool tryUpdateTime(WebRequest *web) {
+bool tryUpdateTime(WebRequest *web, time_t &current_time) {
   web->connect();
   
   configTime(3600, 3600, "pool.ntp.org");
@@ -51,6 +70,8 @@ bool tryUpdateTime(WebRequest *web) {
 
   // copy TZ environment variable to RTC RAM
   strcpy(tz, getenv("TZ"));
+  
+  current_time = time(NULL);
   
   return true;
 }
@@ -79,41 +100,32 @@ void setup() {
   if (current_time == 0 || rounded_hour % 3 == 0) {
     if (!web.connect()) {
       error = UpdateError::EConnection;
-    }
-    if (error == UpdateError::ENone && !tryUpdateTime(&web)) {
+    } else if(!tryUpdateTime(&web, current_time)) {
       error = UpdateError::ETime;
-    }
-    if (error == UpdateError::ENone && !requestWeather(web, &weather)) {
+    } else if(!requestWeather(web, &weather, current_time)) {
       error = UpdateError::EWeather;
-    }
-    if (error == UpdateError::ENone) {
-      weather_save = weather;
     } else {
-      // display UpdateError
-      Serial.print("Update Error: ");
-      Serial.println(error);
+      weather_save = weather;
     }
   }
 
-  current_time = time(NULL);
   current = *localtime(&current_time);
 
   display->initialize(true);
 
-  // display->renderText(String(rounded_hour).c_str(), 180, 80);
-  // display->renderTime(original_time, 220, 80);
-
   rounded_hour = current.tm_hour + (int)roundf((float)current.tm_min / 60);
-  display->renderWeather(weather, rounded_hour);
+  current.tm_hour = rounded_hour;
+  current.tm_min = 0;
+  current.tm_sec = 0;
+  time_t rounded_time = mktime(&current);
+  int offset_hour = (rounded_time - weather.start) / 3600;
+
+  display->renderWeather(weather, rounded_hour, offset_hour);
 
   if (error != UpdateError::ENone) {
     display->renderError(error);
   }
 
-  // display->renderTime(current_time, 280, 80);
-  // display->renderTime(weather.last_update, 340, 80);
-
-  // display->print();
   display->draw();
   delete display;
 
